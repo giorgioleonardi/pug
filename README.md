@@ -25,7 +25,7 @@ The install step automatically runs `playwright install` so browser binaries are
 
 ## Full flow (what PUG covers)
 
-1. **Init** — Add your LLM (Anthropic) API key. If `.env` already has a key, Pug skips the prompt.
+1. **Init** — Add your LLM (Anthropic) API key. Pug may prompt for a **bone** (project) name so you have an active project.
 2. **Validate** — `pug pant` checks the key works (treat or trick?).
 3. **Sniff** — You point Pug at an API docs URL; he scrapes and cleans it to Markdown (`.pug/last_sniff.md`).
 4. **Review** — You review the cleaned file, then run **chew** to turn it into a CLI plan (the Bone Map). Pug infers **auth requirements from the docs** (Bearer token, API key in a header like X-Subscription-Token, or Basic auth) and the API base URL, and saves them for bark. He prefers read-only (GET) commands and notes limits/pagination where relevant.
@@ -35,50 +35,56 @@ The install step automatically runs `playwright install` so browser binaries are
 
 ## Quick start
 
-1. **Init** — Save your Anthropic API key (writes `.env`; skips if already set):
+1. **Init** — Save your Anthropic API key; Pug may ask for a bone name (or create one later):
    ```bash
    pug init
    ```
 
-2. **Pant** — Verify the key (optional but recommended):
+2. **Bone** — Create or switch to a project (everything else uses this active bone):
    ```bash
-   pug pant
+   pug bone api-search-brave-com-cli
    ```
 
-3. **Sniff** — Scrape a docs URL to Markdown (saved to `.pug/last_sniff.md`):
+3. **Sniff** — Scrape a docs URL (saved under `.pug/<bone>/`):
    ```bash
-   pug sniff https://jsonplaceholder.typicode.com
+   pug sniff "https://api.search.brave.com/app/documentation/web-search-api"
    ```
 
-4. **Chew** — AI suggests CLI commands and flags from the sniff (saves `.pug/bone_map.json`); shows insights and base URL:
+4. **Chew** — AI suggests CLI commands and flags from the sniff:
    ```bash
    pug chew
    ```
 
-5. **Refine** (optional) — Chat with Pug to tweak the Bone Map; say `done` when ready:
+5. **Refine** (optional) — Chat to tweak the Bone Map; say `done` when ready:
    ```bash
    pug refine
    ```
 
-6. **Bark** — Smell test (read-only GET; prompts for auth if needed), then generate Go CLI + docs + MCP:
+6. **Bark** — Smell test, then generate Go CLI + docs + MCP:
    ```bash
-   pug bark                    # folder name from API base URL
-   pug bark my-api-cli         # or pass a name
+   pug bark
    ```
 
-Output: `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs` in a directory named from the API or the name you gave.
+7. **Run** — Use the CLI (active bone by default, or pass the project name):
+   ```bash
+   pug run web-search --q hello
+   pug run api-search-brave-com-cli --help
+   ```
+
+Output: a folder named after your bone with `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs`. To work on another API: `pug bone stripe-cli` (or any name), then sniff/chew/bark again.
 
 ## Commands
 
 | Command | Description |
 |--------|-------------|
-| `pug init` | Set Anthropic API key (stored in `.env`); skips if already set |
-| `pug sniff <project> [url] [--resniff] [--save-as name]` | Scrape URL → Markdown; stored in `.pug/<project>/`; `--resniff` re-fetches last URL |
-| `pug chew <project> [file\|-] [--merge]` | LLM builds Bone Map in `.pug/<project>/`; same project name as sniff/bark |
+| `pug init` | Set Anthropic API key (stored in `.env`); may prompt for first bone name |
+| `pug bone [name] [--exit]` | Create or switch to a bone (project); omit name to list. Sniff/chew/refine/bark use the **active bone**. `--exit` clears it. |
+| `pug sniff [url] [--resniff] [--save-as name]` | Scrape URL → Markdown (uses active bone); `--resniff` re-fetches last URL |
+| `pug chew [file\|-] [--merge]` | LLM builds Bone Map (uses active bone) |
 | `pug pant` | Validate API key (treat or trick?) |
-| `pug refine <project>` | Chat to edit Bone Map in `.pug/<project>/` |
-| `pug bark <project>` | Smell test → generate CLI from `.pug/<project>/bone_map.json` (folder named `<project>`) |
-| `pug run <project> [args...]` | Run a generated CLI with `.env` and config already set — no manual env vars |
+| `pug refine` | Chat to edit Bone Map (uses active bone) |
+| `pug bark` | Smell test → generate CLI (uses active bone; folder = bone name) |
+| `pug run [project] [args...]` | Run a generated CLI; omit project to use active bone. Args passed to the CLI (e.g. `pug run web-search --q hello`) |
 
 ## Testing the generated CLI
 
@@ -95,7 +101,7 @@ Every API has its own **project name**. Use the same name for sniff, chew, refin
 
 ## Editing after bark
 
-From the **pug repo**: `pug refine <project>` to edit the Bone Map, say `done`, then `pug bark <project>` to regenerate the CLI folder. To add a command from another doc page: `pug sniff <project> <url> --save-as image` → `pug chew <project> .pug/<project>/sniff_image.md --merge` → `pug bark <project>`.
+`pug refine` (say `done`) → `pug bark` to regenerate. To add from another doc: `pug sniff <url> --save-as image` → `pug chew .pug/<bone>/sniff_image.md --merge` → `pug bark`.
 
 ## Config
 
