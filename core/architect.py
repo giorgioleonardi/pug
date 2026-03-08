@@ -71,11 +71,31 @@ def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] 
         elif isinstance(block, dict) and block.get("type") == "text":
             text += block.get("text", "")
     text = text.strip()
-    # Strip optional markdown code fence
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```\s*$", "", text)
-    data = json.loads(text)
+    if not text:
+        raise ValueError(
+            "Pug got an empty response from the model. The sniffed docs might be too short—try a URL with more API endpoints, or sniff again."
+        )
+    # Try to get JSON: whole response, or inside ```json ... ```, or first [...] span
+    for candidate in [
+        text,
+        re.sub(r"^```(?:json)?\s*", "", text).replace("```", "").strip(),
+    ]:
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
+            candidate = re.sub(r"\s*```\s*$", "", candidate).strip()
+        match = re.search(r"\[[\s\S]*\]", candidate)
+        if match:
+            candidate = match.group(0)
+        try:
+            data = json.loads(candidate)
+            break
+        except json.JSONDecodeError:
+            continue
+    else:
+        raise ValueError(
+            "Pug couldn't parse a Bone Map (no JSON array in the response). "
+            "The docs might be too short or the page structure didn't scrape well—try a URL with more endpoints (e.g. jsonplaceholder.typicode.com) or run chew again."
+        )
     if isinstance(data, list):
         return data
     if isinstance(data, dict) and "commands" in data:

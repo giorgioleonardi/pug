@@ -29,7 +29,7 @@ DIM = "dim"
 
 # ASCII pug (compact, fits narrow terminals)
 PUG_ART = r"""
-  /^ ^\
+   /^ ^\
  / 0 0 \
  V\ Y /V
   / - \
