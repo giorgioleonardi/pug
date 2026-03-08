@@ -432,11 +432,33 @@ def cmd_bark(project_name: Optional[str] = None):
         except (KeyboardInterrupt, EOFError):
             return False
 
+    def _on_smell_test(url: str, success: bool, err: str):
+        if success:
+            console.print(f"[dim]Smell test: [bold]GET[/] [dim]{url}[/] → [green]OK[/] 🦴[/]")
+        else:
+            console.print(f"[dim]Smell test: [bold]GET[/] [dim]{url}[/] → [red]failed[/] ({err})[/]")
+
     try:
-        out_dir = run_bark(BONE_MAP_PATH, PUG_DIR, project_name, refine_chat_on_fail=refine_chat)
+        out_dir = run_bark(
+            BONE_MAP_PATH,
+            PUG_DIR,
+            project_name,
+            refine_chat_on_fail=refine_chat,
+            on_smell_test=_on_smell_test,
+        )
         cli_name = out_dir.name
+        bin_path = out_dir / "bin" / cli_name
         console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
-        console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: bin/{cli_name}, CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
+        console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
+        if bin_path.exists():
+            console.print(f"[dim]CLI binary: [bold]{bin_path}[/]. Run: [bold]cd {out_dir} && ./bin/{cli_name} --help[/]. Set [bold]{cli_name.upper().replace('-', '_')}_BASE_URL[/] and your API key env var (e.g. BRAVE_API_KEY).[/]")
+        else:
+            build_log = out_dir / "build.log"
+            hint = f" See [bold]{build_log}[/] for errors." if build_log.exists() else ""
+            console.print(
+                f"[dim][yellow]Binary not built[/] (Pug builds it automatically when [bold]Go[/] is installed).{hint} "
+                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
+            )
     except SystemExit:
         raise
     except FileNotFoundError as e:

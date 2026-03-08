@@ -132,15 +132,15 @@ def smell_test(
     auth_type: str = "none",
     api_key_env: str = "API_KEY",
     auth_header: Optional[str] = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str]:
     """
     Run a real GET request against the API to verify base_url and auth.
     Picks the first GET entry that has no path params (or uses id=1).
     auth_header: for api_key_header, the header name (e.g. X-Subscription-Token). Default X-API-Key.
-    Returns (success, error_message).
+    Returns (success, error_message, url_tested).
     """
     if not requests:
-        return True, ""  # skip if no requests
+        return True, "", ""
     base_url = base_url.rstrip("/")
     # Prefer a simple GET without path params
     get_entries = [e for e in bone_map if (e.get("method") or "GET").upper() == "GET"]
@@ -158,7 +158,7 @@ def smell_test(
         url = urljoin(base_url + "/", url.lstrip("/"))
         break
     else:
-        return True, ""  # no GET to test
+        return True, "", ""  # no GET to test
 
     # Many search APIs require e.g. ?q=; avoid 422 on smell test
     if "search" in path.lower() and "?" not in url:
@@ -186,10 +186,10 @@ def smell_test(
     try:
         r = requests.get(url, headers=headers or None, timeout=15)
         if r.status_code >= 400:
-            return False, f"Smell test failed: {url} returned {r.status_code} {r.reason}"
-        return True, ""
+            return False, f"Smell test failed: {url} returned {r.status_code} {r.reason}", url
+        return True, "", url
     except requests.RequestException as e:
-        return False, f"Smell test failed: {url} — {e}"
+        return False, f"Smell test failed: {url} — {e}", url
 
 
 # --- Project name from API base URL ---
@@ -327,7 +327,14 @@ func doRequest(method, path string, query map[string]string, body []byte) (*http
 
     try:
         subprocess.run(["go", "mod", "tidy"], cwd=out_dir, capture_output=True, timeout=30)
-        subprocess.run(["go", "build", "-o", f"bin/{cli_name}", "."], cwd=out_dir, capture_output=True, timeout=60)
+        r = subprocess.run(
+            ["go", "build", "-o", f"bin/{cli_name}", "."],
+            cwd=out_dir,
+            capture_output=True,
+            timeout=60,
+        )
+        if r.returncode != 0 and r.stderr:
+            (out_dir / "build.log").write_bytes(r.stderr)
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
@@ -402,16 +409,27 @@ func init() {{
 
 
 # --- CLAUDE.md and SKILL.md ---
-def generate_claude_md(bone_map: list[dict[str, Any]], base_url: str, cli_name: str) -> str:
+def generate_claude_md(
+    bone_map: list[dict[str, Any]], base_url: str, cli_name: str, api_key_env: Optional[str] = None
+) -> str:
     """Agent context: describe each command and data types for Claude."""
+    env_prefix = cli_name.upper().replace("-", "_")
     lines = [
         f"# API CLI ({cli_name}) — Agent Context",
         "",
         f"Base URL: `{base_url}`",
         "",
-        "## Commands",
+        "## How to run",
+        "",
+        f"1. Build (if needed): `go build -o bin/{cli_name} .`",
+        f"2. Set base URL: `export {env_prefix}_BASE_URL={base_url}` or use `--base-url`.",
         "",
     ]
+    if api_key_env:
+        lines.append(f"3. Set API key: `export {api_key_env}=your_key` or use `--api-key`.")
+        lines.append("")
+    lines.append("## Commands")
+    lines.append("")
     for entry in bone_map:
         info = _build_method_info(entry)
         path = entry.get("path", "")
@@ -577,13 +595,13 @@ def bark(
     *,
     skip_smell_test: bool = False,
     refine_chat_on_fail: Optional[Callable[..., Any]] = None,
+    on_smell_test: Optional[Callable[[str, bool, str], None]] = None,
 ) -> Path:
     """
     System compiler: smell test -> [refine chat if fail] -> generate Go CLI, CLAUDE.md, SKILL.md, mcp.json, MCP server.
     project_name: output directory (e.g. spotify-cli). If None, derived from API base URL.
-    refine_chat_on_fail(err, pug_dir, config) returns:
-      True = continue to generate anyway; False = abort;
-      dict with "retry" key = config was updated, reload and retry smell test.
+    refine_chat_on_fail(err, pug_dir, config) returns True / False / {"retry": True}.
+    on_smell_test(url, success, err_message) optional callback to show the test (e.g. in CLI).
     Returns the generated project directory.
     """
     bone_map = load_bone_map(bone_map_path)
@@ -600,7 +618,9 @@ def bark(
     auth_header = config.get("auth_header")
     if not skip_smell_test:
         while True:
-            ok, err = smell_test(bone_map, base_url, auth_type, api_key_env, auth_header=auth_header)
+            ok, err, url = smell_test(bone_map, base_url, auth_type, api_key_env, auth_header=auth_header)
+            if on_smell_test and url:
+                on_smell_test(url, ok, err)
             if ok:
                 break
             if not refine_chat_on_fail:
@@ -620,7 +640,10 @@ def bark(
             raise SystemExit(1)
 
     generate_go_project(bone_map, config, out_dir)
-    (out_dir / "CLAUDE.md").write_text(generate_claude_md(bone_map, base_url, cli_name), encoding="utf-8")
+    (out_dir / "CLAUDE.md").write_text(
+        generate_claude_md(bone_map, base_url, cli_name, api_key_env=config.get("api_key_env")),
+        encoding="utf-8",
+    )
     (out_dir / "SKILL.md").write_text(generate_skill_md(bone_map, base_url, cli_name), encoding="utf-8")
     (out_dir / "mcp.json").write_text(generate_mcp_manifest(out_dir, base_url, cli_name), encoding="utf-8")
     mcp_script = generate_mcp_server_script(bone_map, out_dir, cli_name, config)

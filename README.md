@@ -7,6 +7,7 @@ PUG sniffs messy API docs, chews them into a structured “Bone Map” with an L
 - **Python 3.10+**
 - **Anthropic API key** (for `chew` and `pant`)
 - **Playwright** (browser for scraping): installed automatically by `pip install -e .`; on headless systems run `playwright install` if needed
+- **Go** (for the generated CLI): when you run `pug bark`, Pug builds the CLI binary automatically **if Go is installed** ([install Go](https://go.dev/dl/)). Without Go, you still get the Go source, CLAUDE.md, SKILL.md, and MCP; install Go and run `go build -o bin/<name> .` in the generated folder to create the binary.
 
 ## Install
 
