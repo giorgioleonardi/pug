@@ -35,17 +35,29 @@ Rules:
 3. Nested routes: list each as its own command. For paths with path params (e.g. /posts/1/comments, /users/1/posts), use a command name that describes the resource and add a flag for the parent ID (e.g. --post-id, --user-id). Example: GET /posts/1/comments -> command "list-post-comments", path "/posts/{id}/comments", flags ["--post-id"] (or "--id" for the post).
 4. Filtering and query params: for any query parameter or filter (userId, limit, search, page, _limit, etc.), add a matching flag in kebab-case: userId -> --user-id, _limit -> --limit, postId -> --post-id. Include them in "flags" for that row. If the docs mention rate limits or pagination, add a note in "notes" (e.g. "Supports --limit; API may rate-limit").
 5. Each item must have: "command" (lowercase-hyphen name), "method", "path" (use {id} or {userId} etc. for path params), "flags" (array of flag names like "--user-id", "--limit", "--post-id"), and optionally "notes" (one line).
-6. API server and auth: If the docs specify the API base URL for requests (e.g. "Server: https://api.example.com", "Base URL", or a cURL example with a host), output exactly one line first: BASE_URL: <url> (the URL only, no trailing slash). If the docs specify authentication (required header or Bearer), output: AUTH_TYPE: bearer or AUTH_TYPE: api_key_header. For api_key_header, if the header name is not X-API-Key (e.g. X-Subscription-Token, Authorization), output: AUTH_HEADER: <exact header name>. Optionally: AUTH_ENV: <suggested env var name e.g. BRAVE_SUBSCRIPTION_TOKEN>. Put these lines before the JSON. If the docs do not specify a server or auth, omit these lines.
+6. API server and auth — read the docs carefully to determine the exact requirement:
+   - If the docs specify the API base URL (e.g. "Server: https://...", "Base URL", or cURL host), output: BASE_URL: <url> (no trailing slash).
+   - If the docs specify authentication, identify the scheme and output the matching lines:
+     * Bearer token (Authorization: Bearer <token>) → AUTH_TYPE: bearer, and AUTH_ENV: <suggested env var e.g. API_TOKEN>.
+     * API key in a header (X-API-Key, X-Subscription-Token, Api-Key, or any named header) → AUTH_TYPE: api_key_header, AUTH_HEADER: <exact header name from docs>, AUTH_ENV: <suggested env var>.
+     * Basic auth (Authorization: Basic, or "username/password", "HTTP Basic") → AUTH_TYPE: basic, AUTH_ENV: <e.g. BASIC_AUTH or API_KEY> (value will be username:password).
+   Put these lines before the JSON. If the docs do not specify server or auth, omit them.
 7. Then output ONLY the JSON array. No markdown fences or extra explanation after the array.
 
-Example with auth and server:
+Example (API key in custom header):
 BASE_URL: https://api.search.brave.com/res
 AUTH_TYPE: api_key_header
 AUTH_HEADER: X-Subscription-Token
 AUTH_ENV: BRAVE_SUBSCRIPTION_TOKEN
 [{"command": "search", "method": "GET", "path": "/v1/web/search", "flags": ["--q"], "notes": "Web search"}]
 
-Example with no auth:
+Example (Bearer):
+BASE_URL: https://api.example.com
+AUTH_TYPE: bearer
+AUTH_ENV: API_TOKEN
+[{"command": "list-items", "method": "GET", "path": "/items", "flags": [], "notes": "List items"}]
+
+Example (no auth):
 [{"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--limit"], "notes": "List posts"}]"""
 
 

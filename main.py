@@ -408,7 +408,7 @@ def cmd_bark(project_name: Optional[str] = None):
                     return {"retry": True}
             elif choice == "2":
                 auth_type_choice = Prompt.ask(
-                    "[tan]Auth type: bearer or api_key_header[/]",
+                    "[tan]Auth type: bearer / api_key_header / basic[/]",
                     default=config.get("auth_type") or "api_key_header",
                 ).strip().lower() or "api_key_header"
                 var_name = Prompt.ask(
@@ -421,7 +421,7 @@ def cmd_bark(project_name: Optional[str] = None):
                     save_bark_config(
                         pug_dir,
                         base_url=config["base_url"],
-                        auth_type=auth_type_choice if auth_type_choice in ("bearer", "api_key_header") else "api_key_header",
+                        auth_type=auth_type_choice if auth_type_choice in ("bearer", "api_key_header", "basic") else "api_key_header",
                         api_key_env=var_name,
                         auth_header=config.get("auth_header"),
                     )

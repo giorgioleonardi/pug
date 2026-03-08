@@ -27,10 +27,10 @@ The install step automatically runs `playwright install` so browser binaries are
 1. **Init** — Add your LLM (Anthropic) API key. If `.env` already has a key, Pug skips the prompt.
 2. **Validate** — `pug pant` checks the key works (treat or trick?).
 3. **Sniff** — You point Pug at an API docs URL; he scrapes and cleans it to Markdown (`.pug/last_sniff.md`).
-4. **Review** — You review the cleaned file, then run **chew** to turn it into a CLI plan (the Bone Map). Pug prefers read-only (GET) commands and notes limits/pagination where relevant.
-5. **Insights** — After chew, Pug shows the Bone Map table plus a short summary (command count, base URL). You decide if you’re ready to generate or want to tweak.
+4. **Review** — You review the cleaned file, then run **chew** to turn it into a CLI plan (the Bone Map). Pug infers **auth requirements from the docs** (Bearer token, API key in a header like X-Subscription-Token, or Basic auth) and the API base URL, and saves them for bark. He prefers read-only (GET) commands and notes limits/pagination where relevant.
+5. **Insights** — After chew, Pug shows the Bone Map table plus a short summary (command count, base URL, auth from docs when detected). You decide if you’re ready to generate or want to tweak.
 6. **Refine (optional)** — Run `pug refine` to chat with Pug in the terminal. Ask to add/remove/rename commands, change flags, etc. He updates the Bone Map; when you say **done** or **ready**, you’re set for bark.
-7. **Bark** — Pug runs a **smell test** (real read-only GET). If the API needs auth, he’ll prompt for auth type (bearer / api_key_header) and env var name, save config, and retry. Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP artifacts in one folder per API.
+7. **Bark** — Pug runs a **smell test** (real read-only GET). If the API needs auth and it wasn’t set from chew, he’ll prompt (paste key to .env, or set env var). Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP artifacts in one folder per API.
 
 ## Quick start
 
@@ -73,7 +73,7 @@ Output: `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs` in a
 |--------|-------------|
 | `pug init` | Set Anthropic API key (stored in `.env`); skips if already set |
 | `pug sniff <url>` | Scrape URL → clean Markdown → `.pug/last_sniff.md` |
-| `pug chew [file\|-]` | LLM builds Bone Map from Markdown (default: last sniff); read-only–aware, notes limits |
+| `pug chew [file\|-]` | LLM builds Bone Map; infers API base URL and auth (Bearer, API key header, Basic) from docs |
 | `pug pant` | Validate API key (treat or trick?) |
 | `pug refine` | Chat with Pug to improve the Bone Map; say `done` when ready for bark |
 | `pug bark [name]` | Smell test (prompts for auth if needed) → generate Go CLI + CLAUDE.md + SKILL.md + MCP |
