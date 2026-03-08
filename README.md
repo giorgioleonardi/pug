@@ -6,7 +6,7 @@ PUG sniffs messy API docs, chews them into a structured “Bone Map” with an L
 
 - **Python 3.10+**
 - **Anthropic API key** (for `chew` and `pant`)
-- **Playwright** (browser for scraping): after installing deps, run `playwright install` once
+- **Playwright** (browser for scraping): installed automatically by `pip install -e .`; on headless systems run `playwright install` if needed
 
 ## Install
 
@@ -14,8 +14,9 @@ PUG sniffs messy API docs, chews them into a structured “Bone Map” with an L
 git clone git@github.com:giorgioleonardi/pug.git
 cd pug
 pip install -e .
-playwright install
 ```
+
+The install step automatically runs `playwright install` so browser binaries are ready. If you're in a headless environment or it fails, run `playwright install` yourself.
 
 ## Quick start
 
