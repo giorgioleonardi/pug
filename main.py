@@ -57,6 +57,15 @@ def welcome(*, show_ascii_art: bool = False):
     console.print()
 
 
+def _print_bone_status() -> None:
+    """Print active bone or 'no active bone' so status is visible on every run."""
+    current = _get_current_bone()
+    if current:
+        console.print(f"[dim]Active bone: [bold]{current}[/] 🦴[/]")
+    else:
+        console.print("[dim]No active bone. Run [bold]pug bone <name>[/] to create one.[/]")
+
+
 def _load_dotenv_into_env(env_path: Optional[Path] = None) -> None:
     """Load .env into os.environ so smell test and generated CLI can use vars (e.g. BRAVE_SEARCH_TOKEN)."""
     p = (env_path or Path.cwd()) / ".env"
@@ -213,7 +222,7 @@ def cmd_init():
 
 def cmd_bone(name: Optional[str] = None, exit_bone: bool = False) -> None:
     """Create or switch to a bone (project). All sniff/chew/refine/bark use the active bone.
-    pug bone <name> — set active bone (creates .pug/<name>/ if needed)
+    pug bone <name> — set active bone (creates bones/<name>/ if needed)
     pug bone — show active bone and list bones
     pug bone --exit — clear active bone
     """
@@ -232,18 +241,17 @@ def cmd_bone(name: Optional[str] = None, exit_bone: bool = False) -> None:
         return
     # No name: show current and list
     current = _get_current_bone()
-    pug = Path(".pug")
-    bones = []
-    if pug.exists():
-        for c in sorted(pug.iterdir()):
-            if c.is_dir() and c.name != "current" and not c.name.startswith("."):
-                bones.append(c.name)
+    bones_list = []
+    if BONES_DIR.exists():
+        for c in sorted(BONES_DIR.iterdir()):
+            if c.is_dir() and not c.name.startswith("."):
+                bones_list.append(c.name)
     if current:
         console.print(f"[dim]Active bone: [bold]{current}[/] 🦴[/]")
     else:
         console.print("[dim]No active bone. Run [bold]pug bone <name>[/] to create one (e.g. [bold]pug bone api-search-brave-com-cli[/]).[/]")
-    if bones:
-        console.print(f"[dim]Bones: [bold]{', '.join(bones)}[/][/]")
+    if bones_list:
+        console.print(f"[dim]Bones: [bold]{', '.join(bones_list)}[/][/]")
 
 
 def cmd_sniff(url: Optional[str] = None, save_as: Optional[str] = None, resniff: bool = False):
@@ -328,12 +336,13 @@ def cmd_sniff(url: Optional[str] = None, save_as: Optional[str] = None, resniff:
         console.print(f"[dim]Next: [bold]pug chew[/] then [bold]pug bark[/]. 🦴[/]")
 
 
-# Current bone (project): .pug/current stores the active project name
-CURRENT_BONE_FILE = Path(".pug") / "current"
+# All bone data and generated CLIs live under bones/<name>/ (bone_map, last_sniff, etc.) and bones/<name>/cli/ (generated output)
+BONES_DIR = Path("bones")
+CURRENT_BONE_FILE = BONES_DIR / "current"
 
 
 def _get_current_bone() -> Optional[str]:
-    """Return the active bone name from .pug/current, or None."""
+    """Return the active bone name from bones/current, or None."""
     if not CURRENT_BONE_FILE.exists():
         return None
     name = CURRENT_BONE_FILE.read_text(encoding="utf-8").strip()
@@ -341,8 +350,8 @@ def _get_current_bone() -> Optional[str]:
 
 
 def _set_current_bone(name: str) -> None:
-    """Set the active bone; creates .pug if needed."""
-    Path(".pug").mkdir(exist_ok=True)
+    """Set the active bone; creates bones/ if needed."""
+    BONES_DIR.mkdir(exist_ok=True)
     CURRENT_BONE_FILE.write_text(name.strip(), encoding="utf-8")
 
 
@@ -353,8 +362,8 @@ def _clear_current_bone() -> None:
 
 
 def _pug_project_dir(project: str) -> Path:
-    """Return .pug/<project>/."""
-    return Path(".pug") / project.strip()
+    """Return bones/<project>/ (bone data: bone_map, last_sniff, bark_config; generated CLI is in cli/)."""
+    return BONES_DIR / project.strip()
 
 
 def cmd_chew(markdown_source: str = "-", merge: bool = False):
@@ -456,7 +465,7 @@ def cmd_chew(markdown_source: str = "-", merge: bool = False):
         else:
             console.print(f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL: [bold]{base_hint or '(set in bark)'}[/][/]")
         console.print(f"[dim]Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
-    console.print(f"[dim]Bone map: [bold].pug/{project}/[/].[/]")
+    console.print(f"[dim]Bone map: [bold]{_pug_project_dir(project)}/[/].[/]")
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
 
 
@@ -467,8 +476,7 @@ def cmd_bark():
     if not project_name:
         console.print(f"[{ERROR}]Bark! No active bone. Run [bold]pug bone <name>[/] first. 🐶[/]")
         return
-    pug_root = Path(".pug")
-    pug_dir = pug_root / project_name
+    pug_dir = _pug_project_dir(project_name)
     bone_map_path = pug_dir / "bone_map.json"
     if not bone_map_path.exists():
         console.print(f"[{ERROR}]Bark! No Bone Map for [bold]{project_name}[/]. Run [bold]pug sniff <url>[/] then [bold]pug chew[/] first. 🐶[/]")
@@ -594,7 +602,7 @@ def cmd_bark():
             refine_chat_on_fail=refine_chat,
             on_smell_test=_on_smell_test,
         )
-        cli_name = out_dir.name
+        cli_name = project_name
         bin_path = out_dir / "bin" / cli_name
         console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
         console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
@@ -606,7 +614,7 @@ def cmd_bark():
             hint = f" See [bold]{build_log}[/] for errors." if build_log.exists() else ""
             console.print(
                 f"[dim][yellow]Binary not built[/] (Pug builds it automatically when [bold]Go[/] is installed).{hint} "
-                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark {cli_name}[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
+                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
             )
     except SystemExit:
         raise
@@ -637,7 +645,7 @@ def cmd_refine():
     console.print(
         Panel.fit(
             f"[bold {GOLD}]🐶 Refine the Bone Map 🦴[/]\n\n"
-            f"[dim]Project [bold]{project}[/]: [bold].pug/{project}/[/]\n"
+            f"[dim]Project [bold]{project}[/]: [bold]{_pug_project_dir(project)}/[/]\n"
             "This Bone Map drives [bold]pug bark[/]. Ask Pug to add, remove, or change commands (e.g. \"add image-search GET /res/v1/images/search with --q\").\n"
             "Say [bold]done[/] or [bold]ready[/] when you want to run [bold]pug bark[/] (same folder regenerated).[/]",
             border_style=BORDER,
@@ -696,11 +704,12 @@ def cmd_refine():
 def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
     """Run a generated CLI. If project is omitted, use active bone. Pass-through args go to the CLI."""
     pug_root = Path.cwd()
-    # If first token is a valid project (dir exists), use it; else use current bone and treat token as first CLI arg
+    # If first token is a bone name (bones/<name>/cli exists), use it; else use current bone and treat token as first CLI arg
     project_name = None
     args = list(run_args)
     if project_or_first_arg:
-        if (pug_root / project_or_first_arg).is_dir() or (pug_root / ".pug" / project_or_first_arg).exists():
+        cli_dir = BONES_DIR / project_or_first_arg / "cli"
+        if cli_dir.is_dir():
             project_name = project_or_first_arg
         else:
             project_name = _get_current_bone()
@@ -710,7 +719,7 @@ def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
     if not project_name:
         console.print(f"[{ERROR}]Bark! No active bone and no project given. Run [bold]pug bone <name>[/] or [bold]pug run <project> [args...][/]. 🐶[/]")
         return
-    project_dir = pug_root / project_name
+    project_dir = BONES_DIR / project_name / "cli"
     if not project_dir.is_dir():
         console.print(f"[{ERROR}]Bark! No such project: [bold]{project_name}[/]. Run [bold]pug bark[/] first. 🐶[/]")
         return
@@ -718,17 +727,14 @@ def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
     if config_path.exists():
         config = json.loads(config_path.read_text(encoding="utf-8"))
     else:
-        # Old build: try .pug/<project>/bark_config.json then .pug/bark_config.json
-        bark_config = pug_root / ".pug" / project_name / "bark_config.json"
-        if not bark_config.exists():
-            bark_config = pug_root / ".pug" / "bark_config.json"
+        bark_config = BONES_DIR / project_name / "bark_config.json"
         if bark_config.exists():
             config = json.loads(bark_config.read_text(encoding="utf-8"))
             env_prefix = project_name.upper().replace("-", "_")
             config["env_prefix"] = env_prefix
             config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         else:
-            console.print(f"[{ERROR}]Bark! [bold]{project_name}[/] has no .pug-config.json and no .pug/bark_config.json. Re-run [bold]pug bark[/]. 🐶[/]")
+            console.print(f"[{ERROR}]Bark! [bold]{project_name}[/] has no .pug-config.json. Re-run [bold]pug bark[/]. 🐶[/]")
             return
     bin_path = project_dir / "bin" / project_name
     if not bin_path.exists():
@@ -761,7 +767,7 @@ def main():
     sniff_parser = subparsers.add_parser("sniff", help="🐾 Sniff a URL (scrape and clean to Markdown)")
     sniff_parser.add_argument("url", nargs="?", default=None, help="URL to sniff (omit when using --resniff)")
     sniff_parser.add_argument("--resniff", action="store_true", help="Re-fetch the last sniffed URL for this bone (no URL needed)")
-    sniff_parser.add_argument("--save-as", metavar="name", help="Save to .pug/<bone>/sniff_<name>.md instead of last_sniff.md (for adding from another URL)")
+    sniff_parser.add_argument("--save-as", metavar="name", help="Save to bones/<bone>/sniff_<name>.md instead of last_sniff.md (for adding from another URL)")
 
     # chew: uses active bone
     chew_parser = subparsers.add_parser("chew", help="🐾 CHEW: suggest CLI from Markdown (query params → flags)")
@@ -795,6 +801,8 @@ def main():
     args, unknown = parser.parse_known_args()
 
     welcome(show_ascii_art=(args.command == "init"))
+    if args.command in ("sniff", "chew", "refine", "bark", "run"):
+        _print_bone_status()
 
     if args.command == "init":
         cmd_init()

@@ -1,7 +1,8 @@
 """
 BARK: System Compiler — Go CLI (Cobra), Agent Context (CLAUDE.md, SKILL.md), MCP, and Smell Test.
 
-Reads .pug/bone_map.json and optionally .pug/bark_config.json (base_url, auth).
+Reads bones/<name>/bone_map.json and optionally bones/<name>/bark_config.json (base_url, auth).
+Generates into bones/<name>/cli/.
 Runs a smell test (real API call) before generating; on failure, supports Refine Chat.
 """
 
@@ -79,8 +80,8 @@ def load_bone_map(path: Path) -> list[dict[str, Any]]:
 
 
 # --- Bark config (base_url, auth) ---
-BARK_CONFIG_PATH = Path(".pug/bark_config.json")
-LAST_SNIFF_URL_PATH = Path(".pug/last_sniff_url")
+BARK_CONFIG_PATH = Path("bones") / "bark_config.json"  # legacy fallback; per-bone is bones/<name>/bark_config.json
+LAST_SNIFF_URL_PATH = Path("bones") / "last_sniff_url"
 
 
 def load_bark_config(pug_dir: Path) -> dict[str, Any]:
@@ -213,14 +214,17 @@ def _go_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def generate_go_project(bone_map: list[dict[str, Any]], config: dict[str, Any], out_dir: Path) -> None:
+def generate_go_project(
+    bone_map: list[dict[str, Any]], config: dict[str, Any], out_dir: Path, cli_name: Optional[str] = None
+) -> None:
     """Generate Go module with Cobra: go.mod, main.go, cmd/root.go, cmd/<command>.go; build to bin/<cli_name>."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "cmd").mkdir(parents=True, exist_ok=True)
     (out_dir / "bin").mkdir(parents=True, exist_ok=True)
 
-    cli_name = out_dir.name
+    if cli_name is None:
+        cli_name = out_dir.name
     env_prefix = cli_name.upper().replace("-", "_")
 
     base_url = config.get("base_url", "https://api.example.com")
@@ -617,8 +621,8 @@ def bark(
 
     if project_name is None:
         project_name = _base_url_to_project_name(base_url)
-    out_dir = Path(project_name)
-    cli_name = out_dir.name
+    out_dir = pug_dir / "cli"
+    cli_name = pug_dir.name
 
     auth_header = config.get("auth_header")
     if not skip_smell_test:
@@ -644,7 +648,7 @@ def bark(
                 continue
             raise SystemExit(1)
 
-    generate_go_project(bone_map, config, out_dir)
+    generate_go_project(bone_map, config, out_dir, cli_name=cli_name)
     (out_dir / "CLAUDE.md").write_text(
         generate_claude_md(bone_map, base_url, cli_name, api_key_env=config.get("api_key_env")),
         encoding="utf-8",

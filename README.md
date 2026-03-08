@@ -27,10 +27,10 @@ The install step automatically runs `playwright install` so browser binaries are
 
 1. **Init** — Add your LLM (Anthropic) API key. Pug may prompt for a **bone** (project) name so you have an active project.
 2. **Bone** — `pug bone <name>` creates or switches to a project. All sniff/chew/refine/bark use this **active bone**. Use `pug bone` to list; `pug bone --exit` to clear.
-3. **Sniff** — Point Pug at an API docs URL; he scrapes to Markdown (stored under `.pug/<bone>/`).
+3. **Sniff** — Point Pug at an API docs URL; he scrapes to Markdown (stored under `bones/<bone>/`).
 4. **Chew** — Turn the sniff into a CLI plan (the Bone Map). Pug infers auth and base URL from the docs.
 5. **Refine (optional)** — `pug refine` to chat and tweak the Bone Map; say **done** when ready.
-6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP in a folder named after your bone.
+6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP in `bones/<bone>/cli/`.
 7. **Run** — `pug run` (or `pug run <project>`) runs the generated CLI with .env and config loaded.
 
 ## Quick start
@@ -45,7 +45,7 @@ The install step automatically runs `playwright install` so browser binaries are
    pug bone api-search-brave-com-cli
    ```
 
-3. **Sniff** — Scrape a docs URL (saved under `.pug/<bone>/`):
+3. **Sniff** — Scrape a docs URL (saved under `bones/<bone>/`):
    ```bash
    pug sniff "https://api.search.brave.com/app/documentation/web-search-api"
    ```
@@ -71,7 +71,7 @@ The install step automatically runs `playwright install` so browser binaries are
    pug run api-search-brave-com-cli --help
    ```
 
-Output: a folder named after your bone with `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs`. To work on another API: `pug bone stripe-cli` (or any name), then sniff/chew/bark again.
+Output: `bones/<bone>/cli/` with `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs`. To work on another API: `pug bone stripe-cli` (or any name), then sniff/chew/bark again.
 
 ## Commands
 
@@ -96,16 +96,29 @@ pug run api-search-brave-com-cli --help    # or pass the project name explicitly
 
 `pug run` loads your `.env` and the project's base URL and auth, so you don't set env vars by hand.
 
-**Multiple APIs:** Create another bone with `pug bone stripe-cli`, then sniff/chew/bark. Switch back with `pug bone api-search-brave-com-cli`. Each bone has its own `.pug/<name>/` and generated folder.
+**Multiple APIs:** Create another bone with `pug bone stripe-cli`, then sniff/chew/bark. Switch back with `pug bone api-search-brave-com-cli`. Each bone has its own `bones/<name>/` (bone_map, last_sniff, etc.) and `bones/<name>/cli/` (generated output).
+
+## Using the outputs in Claude, ChatGPT, or other AI tools
+
+The generated CLI lives in `bones/<bone>/cli/` (e.g. `bones/brave-search/cli/`) — no download unless you need it elsewhere.
+
+| Output | Use in Claude | Use in ChatGPT / others |
+|--------|----------------|--------------------------|
+| **CLAUDE.md** | Paste or attach in a chat so Claude knows the API and commands. | Same: paste or attach when you want the AI to use the API. |
+| **MCP** (`mcp.json` + `mcp-server.cjs`) | In **Claude desktop** (or any app that supports MCP): add the server from `mcp.json` to your MCP config and set the required env vars (e.g. `BRAVE_API_KEY`). Then Claude can call the API as a tool. | ChatGPT doesn’t support MCP; use the CLI manually or paste CLAUDE.md. |
+| **SKILL.md** | For **Cursor**: add as an Agent Skill so the editor can use this API. | N/A (Cursor-specific). |
+| **CLI binary** | Run in terminal, paste results into the chat. | Same. |
+
+**Summary:** For **Claude** or **OpenClaw** (or any MCP client): merge the `mcpServers` from the project’s `mcp.json` into your app’s MCP config, fix the server path if you moved the folder, and set the API key in the server’s `env`. For **ChatGPT** or tools without MCP: use **CLAUDE.md** as context and run the CLI yourself when needed.
 
 ## Editing after bark
 
-`pug refine` (say `done`) → `pug bark` to regenerate. To add from another doc: `pug sniff <url> --save-as image` → `pug chew .pug/<bone>/sniff_image.md --merge` → `pug bark`.
+`pug refine` (say `done`) → `pug bark` to regenerate. To add from another doc: `pug sniff <url> --save-as image` → `pug chew bones/<bone>/sniff_image.md --merge` → `pug bark`.
 
 ## Config
 
 - **API key:** `pug init` creates `.env` with `ANTHROPIC_API_KEY`. See `.env.example` for the template.
-- **Runtime:** The active bone is stored in `.pug/current`. Each bone's data lives in `.pug/<name>/` (gitignored). For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`).
+- **Runtime:** The active bone is stored in `bones/current`. Each bone's data lives in `bones/<name>/` (bone_map.json, last_sniff.md, bark_config.json; gitignored). Generated output is in `bones/<name>/cli/`. For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`).
 
 ## Project layout
 
@@ -118,6 +131,16 @@ pug/
 │   ├── barker.py    # Smell test + Go/Cobra + CLAUDE/SKILL/MCP
 │   └── (API key validated in init via architect)
 ├── templates/       # Go and doc templates
+├── bones/           # Runtime (gitignored): one dir per bone
+│   ├── current      # Active bone name
+│   ├── brave-search/
+│   │   ├── bone_map.json
+│   │   ├── bark_config.json
+│   │   ├── last_sniff.md
+│   │   ├── last_sniff_full_url
+│   │   └── cli/     # Generated: bin/, CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs
+│   └── stripe/
+│       └── ...
 ├── requirements.txt
 └── setup.py
 ```

@@ -11,8 +11,11 @@ build/
 dist/
 
 # PUG runtime output (regenerate with: pug sniff → pug chew → pug bark)
-.pug/
+bones/
 dog-cli/
+
+# Local manifest (do not sync to GitHub)
+PUG_MANIFEST.md
 
 # Python
 __pycache__/

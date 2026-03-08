@@ -240,7 +240,7 @@ def plan_to_bone_map_rows(plan: list[dict[str, Any]]) -> list[tuple[str, str, st
 
 
 def save_bone_map(plan: list[dict[str, Any]], path: Path) -> None:
-    """Persist the Bone Map as JSON (e.g. .pug/bone_map.json)."""
+    """Persist the Bone Map as JSON (e.g. bones/<name>/bone_map.json)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
 
