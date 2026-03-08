@@ -5,7 +5,7 @@ PUG sniffs messy API docs, chews them into a structured “Bone Map” with an L
 ## Requirements
 
 - **Python 3.10+**
-- **Anthropic API key** (for `chew` and `pant`)
+- **Anthropic API key** (for `chew`; validated automatically when you run `pug init`)
 - **Playwright** (browser for scraping): installed automatically by `pip install -e .`; on headless systems run `playwright install` if needed
 - **Go** (for the generated CLI): when you run `pug bark`, Pug builds the CLI binary automatically **if Go is installed** ([install Go](https://go.dev/dl/)). Without Go, you still get the Go source, CLAUDE.md, SKILL.md, and MCP; install Go and run `go build -o bin/<name> .` in the generated folder to create the binary.
 
@@ -81,7 +81,6 @@ Output: a folder named after your bone with `bin/<name>`, `CLAUDE.md`, `SKILL.md
 | `pug bone [name] [--exit]` | Create or switch to a bone (project); omit name to list. Sniff/chew/refine/bark use the **active bone**. `--exit` clears it. |
 | `pug sniff [url] [--resniff] [--save-as name]` | Scrape URL → Markdown (uses active bone); `--resniff` re-fetches last URL |
 | `pug chew [file\|-] [--merge]` | LLM builds Bone Map (uses active bone) |
-| `pug pant` | Validate API key (treat or trick?) |
 | `pug refine` | Chat to edit Bone Map (uses active bone) |
 | `pug bark` | Smell test → generate CLI (uses active bone; folder = bone name) |
 | `pug run [project] [args...]` | Run a generated CLI; omit project to use active bone. Args passed to the CLI (e.g. `pug run web-search --q hello`) |
@@ -112,12 +111,12 @@ pug run api-search-brave-com-cli --help    # or pass the project name explicitly
 
 ```
 pug/
-├── main.py          # CLI entry (init, bone, sniff, chew, pant, refine, bark, run)
+├── main.py          # CLI entry (init, bone, sniff, chew, refine, bark, run)
 ├── core/
 │   ├── sniffer.py   # Playwright scrape → Markdown
 │   ├── architect.py # LLM “chew” → Bone Map JSON
 │   ├── barker.py    # Smell test + Go/Cobra + CLAUDE/SKILL/MCP
-│   └── pant.py      # API key validation
+│   └── (API key validated in init via architect)
 ├── templates/       # Go and doc templates
 ├── requirements.txt
 └── setup.py

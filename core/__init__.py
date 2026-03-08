@@ -1,1 +1,1 @@
-# PUG core: sniffer, chewer, pant, huff
+# PUG core: sniffer, architect (chew/refine/validate key), barker

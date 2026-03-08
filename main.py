@@ -108,6 +108,19 @@ def _env_has_anthropic_key() -> bool:
     return False
 
 
+def _validate_and_report_key() -> None:
+    """Validate the Anthropic key and print success or error (used after init)."""
+    try:
+        validate_anthropic_key()
+        console.print(f"[{SUCCESS}]Key validated. Treat! 🦴[/]")
+    except FileNotFoundError as e:
+        console.print(f"[{ERROR}]Bark! {e}[/]")
+    except ValueError as e:
+        console.print(f"[{ERROR}]Bark! {e}[/]")
+    except Exception as e:
+        console.print(f"[{ERROR}]Bark! Key invalid or rate-limited: {e}[/]")
+
+
 def cmd_init():
     """Ask for Anthropic API Key and save to .env (Pug-themed). Skip prompt if key already set."""
     console.print()
@@ -115,17 +128,18 @@ def cmd_init():
         console.print(
             Panel.fit(
                 f"[{SUCCESS}]Huff! Key already set in .env 🦴[/]\n\n"
-                "[dim]Run [bold]pug pant[/] to verify, or edit .env to change it.[/]",
+                "[dim]Validating...[/]",
                 border_style=BORDER,
                 title=f"[{GOLD}] init 🐾 [/]",
                 title_align="left",
             )
         )
+        _validate_and_report_key()
         return
     console.print(
         Panel.fit(
             f"[bold {GOLD}]🐶 Time to sniff out your API key[/]\n\n"
-            "[dim]Pug needs your Anthropic API key so he can pant at the docs.\n"
+            "[dim]Pug needs your Anthropic API key so he can chew the docs.\n"
             "Paste it below (input is hidden). 🦴[/]",
             border_style=BORDER,
             title=f"[{GOLD}] init 🐾 [/]",
@@ -174,12 +188,13 @@ def cmd_init():
     console.print(
         Panel.fit(
             f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]\n\n"
-            f"[dim]Saved to [bold]{env_path.resolve()}[/bold][/]",
+            f"[dim]Saved to [bold]{env_path.resolve()}[/bold][/]\n\n[dim]Validating key...[/]",
             border_style=BORDER,
             title=f"[{GOLD}] 🦴 .env 🐾 [/]",
             title_align="left",
         )
     )
+    _validate_and_report_key()
     # Prompt for first bone so user has an active project
     current = _get_current_bone()
     if not current:
@@ -443,30 +458,6 @@ def cmd_chew(markdown_source: str = "-", merge: bool = False):
         console.print(f"[dim]Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
     console.print(f"[dim]Bone map: [bold].pug/{project}/[/].[/]")
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
-
-
-def cmd_pant():
-    """PANT: Live auth validation — is the API key a treat or a trick?"""
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold {GOLD}]🐶 Panting at the key...[/]\n\n"
-            "[dim]Is this key a treat or a trick? 🦴[/]",
-            border_style=BORDER,
-            title=f"[{GOLD}] pant 🐾 [/]",
-            title_align="left",
-        )
-    )
-    console.print()
-    try:
-        validate_anthropic_key()
-        console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/] [dim](Key is valid.)[/]")
-    except FileNotFoundError as e:
-        console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
-    except ValueError as e:
-        console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
-    except Exception as e:
-        console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/] [dim](Key might be invalid or rate-limited.)[/]")
 
 
 def cmd_bark():
@@ -786,9 +777,6 @@ def main():
         help="Merge new commands from the doc into the existing Bone Map (use after sniff --save-as)",
     )
 
-    # pant: live auth validation (is the key a treat or a trick?)
-    subparsers.add_parser("pant", help="🐾 PANT: test API key (treat or trick?)")
-
     # bark: uses active bone
     bark_parser = subparsers.add_parser("bark", help="🐾 BARK: generate Go CLI + docs + MCP (uses active bone)")
 
@@ -820,8 +808,6 @@ def main():
         )
     elif args.command == "chew":
         cmd_chew(markdown_source=args.source, merge=getattr(args, "merge", False))
-    elif args.command == "pant":
-        cmd_pant()
     elif args.command == "bark":
         cmd_bark()
     elif args.command == "refine":
@@ -833,7 +819,7 @@ def main():
         cmd_run(getattr(args, "project", None), unknown or [])
     elif args.command is None:
         console.print(f"[dim]Use [bold {GOLD}]pug init[/] to set your API key, then [bold]pug bone <name>[/] to create a project. 🐶[/]")
-        console.print("[dim]Commands: bone, sniff, chew, pant, refine, bark, run.[/]")
+        console.print("[dim]Commands: bone, sniff, chew, refine, bark, run.[/]")
 
 
 if __name__ == "__main__":
