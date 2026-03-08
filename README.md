@@ -10,9 +10,13 @@ PUG sniffs messy API docs, chews them into a structured “Bone Map” with an L
 
 ## Install
 
+Use a virtual environment so dependencies stay isolated (recommended):
+
 ```bash
 git clone git@github.com:giorgioleonardi/pug.git
 cd pug
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e .
 ```
 
