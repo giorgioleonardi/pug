@@ -61,6 +61,13 @@ Example (no auth):
 [{"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--limit"], "notes": "List posts"}]"""
 
 
+CHEW_MERGE_SYSTEM = """You are a CLI architect. You have an EXISTING Bone Map (JSON array of CLI commands) and NEW API documentation.
+
+Your task: output a single JSON array that is the EXISTING commands plus any NEW commands from the new doc. Keep every existing command exactly as-is. Add only new commands that come from the new documentation (use the same format: command, method, path, flags, notes). Do not remove or change existing commands. If the new doc describes no new endpoints, output the existing array unchanged.
+
+Output ONLY the combined JSON array. No BASE_URL or AUTH lines, no markdown fences, no explanation."""
+
+
 def _parse_chew_config(lines: list[str]) -> tuple[list[str], dict[str, Any]]:
     """Extract BASE_URL, AUTH_TYPE, AUTH_HEADER, AUTH_ENV from start of response; return (remaining lines, config)."""
     config: dict[str, Any] = {}
@@ -152,6 +159,70 @@ def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] 
     else:
         plan = [data] if isinstance(data, dict) else []
     return plan, config
+
+
+def chew_merge(
+    markdown: str,
+    existing_plan: list[dict[str, Any]],
+    api_key: Optional[str] = None,
+    env_path: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    """
+    Suggest new commands from the given doc and merge with existing_plan.
+    Returns the combined Bone Map (existing + new). Config is not updated (caller keeps existing bark config).
+    """
+    key = api_key or _load_api_key(env_path)
+    client = anthropic.Anthropic(api_key=key)
+    existing_json = json.dumps(existing_plan, indent=2)
+    user_content = (
+        "EXISTING Bone Map (keep all of these unchanged):\n\n"
+        f"{existing_json}\n\n"
+        "---\n\n"
+        "NEW API documentation (add any new commands from this; same JSON shape: command, method, path, flags, notes):\n\n"
+        "---\n"
+        + markdown
+    )
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        system=CHEW_MERGE_SYSTEM,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    text = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            text += block.text
+        elif isinstance(block, dict) and block.get("type") == "text":
+            text += block.get("text", "")
+    text = text.strip()
+    if not text:
+        raise ValueError("Pug got an empty response during merge. Try again.")
+    for candidate in [
+        text,
+        re.sub(r"^```(?:json)?\s*", "", text).replace("```", "").strip(),
+    ]:
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
+            candidate = re.sub(r"\s*```\s*$", "", candidate).strip()
+        match = re.search(r"\[[\s\S]*\]", candidate)
+        if match:
+            candidate = match.group(0)
+        try:
+            data = json.loads(candidate)
+            break
+        except json.JSONDecodeError:
+            continue
+    else:
+        raise ValueError(
+            "Pug couldn't parse the merged Bone Map (no JSON array). Try pug refine to add commands manually."
+        )
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "commands" in data:
+        return data["commands"]
+    if isinstance(data, dict) and "plan" in data:
+        return data["plan"]
+    return [data] if isinstance(data, dict) else []
 
 
 def plan_to_bone_map_rows(plan: list[dict[str, Any]]) -> list[tuple[str, str, str, str, str]]:
