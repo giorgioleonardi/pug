@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -71,6 +72,27 @@ def _load_dotenv_into_env(env_path: Optional[Path] = None) -> None:
             val = val.strip().strip('"').strip("'")
             if key and key not in os.environ:
                 os.environ[key] = val
+
+
+def _env_for_run(pug_root: Path, config: dict) -> dict:
+    """Build env dict for pug run: .env from pug_root + BASE_URL and AUTH from config."""
+    env = os.environ.copy()
+    env_file = pug_root / ".env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key:
+                env[key] = val
+    prefix = config.get("env_prefix", "")
+    if prefix:
+        env[f"{prefix}_BASE_URL"] = config.get("base_url", "")
+        env[f"{prefix}_AUTH"] = config.get("auth_type", "none")
+    return env
 
 
 def _env_has_anthropic_key() -> bool:
@@ -451,7 +473,7 @@ def cmd_bark(project_name: Optional[str] = None):
         console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
         console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
         if bin_path.exists():
-            console.print(f"[dim]CLI binary: [bold]{bin_path}[/]. Run: [bold]cd {out_dir} && ./bin/{cli_name} --help[/]. Set [bold]{cli_name.upper().replace('-', '_')}_BASE_URL[/] and your API key env var (e.g. BRAVE_API_KEY).[/]")
+            console.print(f"[dim]Test it: [bold]pug run {cli_name} web-search --q hello[/] (loads .env + base URL + auth for you). Or [bold]pug run {cli_name} --help[/].[/]")
         else:
             build_log = out_dir / "build.log"
             hint = f" See [bold]{build_log}[/] for errors." if build_log.exists() else ""
@@ -536,6 +558,39 @@ def cmd_refine():
         history.append({"role": "assistant", "content": reply})
 
 
+def cmd_run(project_name: str, run_args: list[str]) -> None:
+    """Run a generated CLI with .env and project config (base URL, auth) already set."""
+    pug_root = Path.cwd()
+    project_dir = pug_root / project_name
+    if not project_dir.is_dir():
+        console.print(f"[{ERROR}]Bark! No such project: [bold]{project_name}[/]. Run [bold]pug bark[/] first. 🐶[/]")
+        return
+    config_path = project_dir / ".pug-config.json"
+    if config_path.exists():
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        # Old build: try .pug/bark_config.json and write .pug-config.json into project
+        bark_config = pug_root / ".pug" / "bark_config.json"
+        if bark_config.exists():
+            config = json.loads(bark_config.read_text(encoding="utf-8"))
+            env_prefix = project_name.upper().replace("-", "_")
+            config["env_prefix"] = env_prefix
+            config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        else:
+            console.print(f"[{ERROR}]Bark! [bold]{project_name}[/] has no .pug-config.json and no .pug/bark_config.json. Re-run [bold]pug bark[/]. 🐶[/]")
+            return
+    bin_path = project_dir / "bin" / project_name
+    if not bin_path.exists():
+        console.print(f"[{ERROR}]Bark! No binary at [bold]{bin_path}[/]. Install Go and run [bold]go build -o bin/{project_name} .[/] in [bold]{project_dir}[/]. 🐶[/]")
+        return
+    env = _env_for_run(pug_root, config)
+    cmd = [str(bin_path)] + run_args
+    try:
+        subprocess.run(cmd, env=env, cwd=str(project_dir))
+    except KeyboardInterrupt:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="🐶 PUG — The Stubborn API Scraper",
@@ -574,6 +629,11 @@ def main():
     # refine: chat with Pug to tweak Bone Map until ready, then bark
     subparsers.add_parser("refine", help="🐾 REFINE: chat with Pug to improve Bone Map, then run bark when ready")
 
+    # run: execute a generated CLI with .env + config (base URL, auth) set
+    run_parser = subparsers.add_parser("run", help="🐾 RUN: run a generated CLI (loads .env + config so you don't set env by hand)")
+    run_parser.add_argument("project", help="Project name (e.g. api-search-brave-com-cli)")
+    run_parser.add_argument("args", nargs="*", help="Arguments passed to the CLI (e.g. web-search --q hello)")
+
     args = parser.parse_args()
 
     welcome(show_ascii_art=(args.command == "init"))
@@ -590,9 +650,11 @@ def main():
         cmd_bark(project_name=args.name)
     elif args.command == "refine":
         cmd_refine()
+    elif args.command == "run":
+        cmd_run(args.project, args.args or [])
     elif args.command is None:
         console.print(f"[dim]Use [bold {GOLD}]pug init[/] to set your API key. 🐶[/]")
-        console.print("[dim]Commands: sniff, chew, pant, refine, bark, huff (coming soon).[/]")
+        console.print("[dim]Commands: sniff, chew, pant, refine, bark, run, huff (coming soon).[/]")
 
 
 if __name__ == "__main__":

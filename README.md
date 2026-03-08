@@ -78,6 +78,18 @@ Output: `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs` in a
 | `pug pant` | Validate API key (treat or trick?) |
 | `pug refine` | Chat with Pug to improve the Bone Map; say `done` when ready for bark |
 | `pug bark [name]` | Smell test (prompts for auth if needed) → generate Go CLI + CLAUDE.md + SKILL.md + MCP |
+| `pug run <project> [args...]` | Run a generated CLI with `.env` and config (base URL, auth) already set — no manual env vars |
+
+## Testing the generated CLI
+
+From the **pug repo root**, run the generated CLI with everything configured for you:
+
+```bash
+pug run api-search-brave-com-cli web-search --q "hello"
+pug run api-search-brave-com-cli --help
+```
+
+`pug run` loads your `.env` (e.g. `BRAVE_API_KEY`) and the project’s base URL and auth type, so you don’t set any env vars by hand. (Projects generated before this feature need a fresh `pug bark` to get the run config.)
 
 ## Config
 

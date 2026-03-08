@@ -648,4 +648,19 @@ def bark(
     (out_dir / "mcp.json").write_text(generate_mcp_manifest(out_dir, base_url, cli_name), encoding="utf-8")
     mcp_script = generate_mcp_server_script(bone_map, out_dir, cli_name, config)
     (out_dir / "mcp-server.cjs").write_text(mcp_script, encoding="utf-8")
+    # So "pug run <project>" can set BASE_URL, AUTH, and key from .env
+    env_prefix = cli_name.upper().replace("-", "_")
+    (out_dir / ".pug-config.json").write_text(
+        json.dumps(
+            {
+                "base_url": base_url,
+                "auth_type": config.get("auth_type", "none"),
+                "api_key_env": config.get("api_key_env", "API_KEY"),
+                "auth_header": config.get("auth_header"),
+                "env_prefix": env_prefix,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return out_dir
