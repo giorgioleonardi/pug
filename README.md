@@ -26,12 +26,12 @@ The install step automatically runs `playwright install` so browser binaries are
 ## Full flow (what PUG covers)
 
 1. **Init** — Add your LLM (Anthropic) API key. Pug may prompt for a **bone** (project) name so you have an active project.
-2. **Validate** — `pug pant` checks the key works (treat or trick?).
-3. **Sniff** — You point Pug at an API docs URL; he scrapes and cleans it to Markdown (`.pug/last_sniff.md`).
-4. **Review** — You review the cleaned file, then run **chew** to turn it into a CLI plan (the Bone Map). Pug infers **auth requirements from the docs** (Bearer token, API key in a header like X-Subscription-Token, or Basic auth) and the API base URL, and saves them for bark. He prefers read-only (GET) commands and notes limits/pagination where relevant.
-5. **Insights** — After chew, Pug shows the Bone Map table plus a short summary (command count, base URL, auth from docs when detected). You decide if you’re ready to generate or want to tweak.
-6. **Refine (optional)** — Run `pug refine` to chat with Pug in the terminal. Ask to add/remove/rename commands, change flags, etc. He updates the Bone Map; when you say **done** or **ready**, you’re set for bark.
-7. **Bark** — Pug runs a **smell test** (real read-only GET). If the API needs auth and it wasn’t set from chew, he’ll prompt (paste key to .env, or set env var). Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP artifacts in one folder per API.
+2. **Bone** — `pug bone <name>` creates or switches to a project. All sniff/chew/refine/bark use this **active bone**. Use `pug bone` to list; `pug bone --exit` to clear.
+3. **Sniff** — Point Pug at an API docs URL; he scrapes to Markdown (stored under `.pug/<bone>/`).
+4. **Chew** — Turn the sniff into a CLI plan (the Bone Map). Pug infers auth and base URL from the docs.
+5. **Refine (optional)** — `pug refine` to chat and tweak the Bone Map; say **done** when ready.
+6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP in a folder named after your bone.
+7. **Run** — `pug run` (or `pug run <project>`) runs the generated CLI with .env and config loaded.
 
 ## Quick start
 
@@ -91,13 +91,13 @@ Output: a folder named after your bone with `bin/<name>`, `CLAUDE.md`, `SKILL.md
 From the **pug repo root**, run the generated CLI with everything configured for you:
 
 ```bash
-pug run api-search-brave-com-cli web-search --q "hello"
-pug run api-search-brave-com-cli --help
+pug run web-search --q "hello"              # uses active bone; args go to the CLI
+pug run api-search-brave-com-cli --help    # or pass the project name explicitly
 ```
 
-`pug run` loads your `.env` (e.g. `BRAVE_API_KEY`) and the project’s base URL and auth type, so you don’t set any env vars by hand. (Projects generated before this feature need a fresh `pug bark` to get the run config.)
+`pug run` loads your `.env` and the project's base URL and auth, so you don't set env vars by hand.
 
-Every API has its own **project name**. Use the same name for sniff, chew, refine, and bark; everything is stored under `.pug/<project>/` (e.g. `.pug/api-search-brave-com-cli/`, `.pug/stripe-cli/`). Example flow for one API: `pug sniff api-search-brave-com-cli "https://api.search.brave.com/.../web-search-api"` → `pug chew api-search-brave-com-cli` → `pug bark api-search-brave-com-cli`. For another API: pick a different project name (e.g. `stripe-cli`) and repeat.
+**Multiple APIs:** Create another bone with `pug bone stripe-cli`, then sniff/chew/bark. Switch back with `pug bone api-search-brave-com-cli`. Each bone has its own `.pug/<name>/` and generated folder.
 
 ## Editing after bark
 
@@ -106,13 +106,13 @@ Every API has its own **project name**. Use the same name for sniff, chew, refin
 ## Config
 
 - **API key:** `pug init` creates `.env` with `ANTHROPIC_API_KEY`. See `.env.example` for the template.
-- **Runtime:** Sniff and Bone Map live under `.pug/` (gitignored). For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`); set that env var before re-running the smell test.
+- **Runtime:** The active bone is stored in `.pug/current`. Each bone's data lives in `.pug/<name>/` (gitignored). For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`).
 
 ## Project layout
 
 ```
 pug/
-├── main.py          # CLI entry (init, sniff, chew, pant, refine, bark)
+├── main.py          # CLI entry (init, bone, sniff, chew, pant, refine, bark, run)
 ├── core/
 │   ├── sniffer.py   # Playwright scrape → Markdown
 │   ├── architect.py # LLM “chew” → Bone Map JSON
