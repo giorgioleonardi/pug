@@ -120,6 +120,10 @@ The generated CLI lives in `bones/<bone>/cli/` (e.g. `bones/brave-search/cli/`) 
 - **API key:** `pug init` creates `.env` with `ANTHROPIC_API_KEY`. See `.env.example` for the template.
 - **Runtime:** The active bone is stored in `bones/current`. Each bone's data lives in `bones/<name>/` (bone_map.json, last_sniff.md, bark_config.json; gitignored). Generated output is in `bones/<name>/cli/`. For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`).
 
+## Security
+
+Do not commit `.env`. Use `.env.example` as a template and keep keys local. On GitHub, enable [push protection for secrets](https://docs.github.com/en/code-security/secret-scanning/protecting-pushes-with-secret-scanning) and consider [Dependabot](https://docs.github.com/en/code-security/dependabot) for dependency updates.
+
 ## Project layout
 
 ```
