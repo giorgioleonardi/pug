@@ -73,12 +73,12 @@ Output: `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs` in a
 | Command | Description |
 |--------|-------------|
 | `pug init` | Set Anthropic API key (stored in `.env`); skips if already set |
-| `pug sniff [url] [--resniff] [--save-as name] [--project name]` | Scrape URL → Markdown; `--resniff` re-fetches the last URL (no url needed); use `--project` for per-API dirs |
-| `pug chew [file\|-] [--merge] [--project name]` | LLM builds Bone Map; use `--project` to match sniff (same `<name>` as bark) |
+| `pug sniff <project> [url] [--resniff] [--save-as name]` | Scrape URL → Markdown; stored in `.pug/<project>/`; `--resniff` re-fetches last URL |
+| `pug chew <project> [file\|-] [--merge]` | LLM builds Bone Map in `.pug/<project>/`; same project name as sniff/bark |
 | `pug pant` | Validate API key (treat or trick?) |
-| `pug refine [--project name]` | Chat to edit Bone Map; use `--project` when you have multiple APIs |
-| `pug bark [name]` | Smell test → generate CLI; uses `.pug/<name>/bone_map.json` if present, else legacy `.pug/bone_map.json` |
-| `pug run <project> [args...]` | Run a generated CLI with `.env` and config (base URL, auth) already set — no manual env vars |
+| `pug refine <project>` | Chat to edit Bone Map in `.pug/<project>/` |
+| `pug bark <project>` | Smell test → generate CLI from `.pug/<project>/bone_map.json` (folder named `<project>`) |
+| `pug run <project> [args...]` | Run a generated CLI with `.env` and config already set — no manual env vars |
 
 ## Testing the generated CLI
 
@@ -91,17 +91,11 @@ pug run api-search-brave-com-cli --help
 
 `pug run` loads your `.env` (e.g. `BRAVE_API_KEY`) and the project’s base URL and auth type, so you don’t set any env vars by hand. (Projects generated before this feature need a fresh `pug bark` to get the run config.)
 
-## Multiple APIs (per-project bone maps)
-
-To work on **several APIs** (e.g. Brave and Stripe) without sharing one bone map, use **`--project <name>`** on sniff, chew, and refine. Each API gets its own dir: `.pug/<name>/` (e.g. `.pug/api-search-brave-com-cli/`, `.pug/stripe-cli/`). Use the same `<name>` for sniff, chew, refine, and bark. Bark uses `.pug/<name>/bone_map.json` when it exists.
+Every API has its own **project name**. Use the same name for sniff, chew, refine, and bark; everything is stored under `.pug/<project>/` (e.g. `.pug/api-search-brave-com-cli/`, `.pug/stripe-cli/`). Example flow for one API: `pug sniff api-search-brave-com-cli "https://api.search.brave.com/.../web-search-api"` → `pug chew api-search-brave-com-cli` → `pug bark api-search-brave-com-cli`. For another API: pick a different project name (e.g. `stripe-cli`) and repeat.
 
 ## Editing after bark
 
-Everything runs from the **pug repo**. Use `pug refine` or `pug refine --project <name>`; the Bone Map drives your generated CLI. After editing, `pug bark` or `pug bark <name>` regenerates the same project folder.
-
-**Add another Brave search method (e.g. image search):** (1) **Chat:** Run `pug refine`, say e.g. *"add command image-search, GET /res/v1/images/search, flags --q --count"*, say `done`, then `pug bark`. (2) **From docs:** `pug sniff "https://api.search.brave.com/app/documentation/images-search-api" --save-as image` then `pug chew .pug/sniff_image.md --merge` then `pug bark`.
-
-**Change or trim commands:** Run `pug refine`, edit in chat (e.g. "only keep web-search"), say `done`, then `pug bark`.
+From the **pug repo**: `pug refine <project>` to edit the Bone Map, say `done`, then `pug bark <project>` to regenerate the CLI folder. To add a command from another doc page: `pug sniff <project> <url> --save-as image` → `pug chew <project> .pug/<project>/sniff_image.md --merge` → `pug bark <project>`.
 
 ## Config
 

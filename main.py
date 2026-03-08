@@ -182,26 +182,28 @@ def cmd_init():
     )
 
 
-def cmd_sniff(url: Optional[str] = None, save_as: Optional[str] = None, project: Optional[str] = None, resniff: bool = False):
+def cmd_sniff(project: str, url: Optional[str] = None, save_as: Optional[str] = None, resniff: bool = False):
     """Sniff a URL with Playwright; strip nav/footer; return clean Markdown.
-    If resniff is True, re-use the last sniff URL for this project (no url needed).
-    If project is set, use .pug/<project>/.
-    If save_as is set, write to .pug/<project>/sniff_<save_as>.md (does not overwrite last_sniff.md).
+    Project is required; everything is stored under .pug/<project>/.
+    Use --resniff to re-fetch the last sniff URL (no url needed).
     """
+    if not project or not project.strip():
+        console.print(f"[{ERROR}]Bark! Project name is required. Example: [bold]pug sniff my-api <url>[/] 🐶[/]")
+        return
+    project = project.strip()
     if resniff:
         pug_dir = _pug_project_dir(project)
         full_url_path = pug_dir / "last_sniff_full_url"
         if not full_url_path.exists():
-            hint = f" for project [bold]{project}[/]" if project else ""
-            console.print(f"[{ERROR}]Bark! No previous sniff URL{hint}. Run [bold]pug sniff <url>[/] first. 🐶[/]")
+            console.print(f"[{ERROR}]Bark! No previous sniff URL for [bold]{project}[/]. Run [bold]pug sniff {project} <url>[/] first. 🐶[/]")
             return
         url = full_url_path.read_text(encoding="utf-8").strip()
         if not url:
-            console.print(f"[{ERROR}]Bark! Stored sniff URL is empty. Run [bold]pug sniff <url>[/] again. 🐶[/]")
+            console.print(f"[{ERROR}]Bark! Stored sniff URL is empty. Run [bold]pug sniff {project} <url>[/] again. 🐶[/]")
             return
         console.print(f"[dim]Resniffing [bold]{url}[/] 🐶[/]")
     elif not url or not url.strip():
-        console.print(f"[{ERROR}]Bark! Give me a URL to sniff, or use [bold]--resniff[/] to re-fetch the last one. 🐶[/]")
+        console.print(f"[{ERROR}]Bark! Give me a URL to sniff: [bold]pug sniff {project} <url>[/], or use [bold]--resniff[/] to re-fetch the last one. 🐶[/]")
         return
     else:
         url = url.strip()
@@ -260,24 +262,24 @@ def cmd_sniff(url: Optional[str] = None, save_as: Optional[str] = None, project:
             except Exception:
                 pass
             console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
-        if project:
-            console.print(f"[dim]Project [bold]{project}[/]: use [bold]pug chew --project {project}[/] then [bold]pug bark {project}[/].[/]")
+        console.print(f"[dim]Next: [bold]pug chew {project}[/] then [bold]pug bark {project}[/].[/]")
 
 
-# Per-project or legacy .pug layout: .pug/<project>/ or .pug/
-def _pug_project_dir(project: Optional[str]) -> Path:
-    """Return .pug/<project> when project is set, else .pug (legacy single-API)."""
-    pug = Path(".pug")
-    if project and project.strip():
-        return pug / project.strip()
-    return pug
+# Always per-project: .pug/<project>/
+def _pug_project_dir(project: str) -> Path:
+    """Return .pug/<project>/ (project is always required)."""
+    return Path(".pug") / project.strip()
 
 
-def cmd_chew(markdown_source: str, merge: bool = False, project: Optional[str] = None):
+def cmd_chew(project: str, markdown_source: str = "-", merge: bool = False):
     """CHEW: AI reads Markdown and suggests CLI structure; show 'The Bone Map' table.
-    If project is set, use .pug/<project>/ so each API has its own bone map.
-    If merge is True and a bone map already exists for this project, merge new commands from the doc into it.
+    Project is required; bone map is stored in .pug/<project>/.
+    If merge is True and a bone map already exists, merge new commands from the doc into it.
     """
+    if not project or not project.strip():
+        console.print(f"[{ERROR}]Bark! Project name is required. Example: [bold]pug chew my-api[/] 🐶[/]")
+        return
+    project = project.strip()
     pug_dir = _pug_project_dir(project)
     last_sniff_path = pug_dir / "last_sniff.md"
     bone_map_path = pug_dir / "bone_map.json"
@@ -357,8 +359,7 @@ def cmd_chew(markdown_source: str, merge: bool = False, project: Optional[str] =
     console.print(table)
     console.print(f"[dim]Saved to [bold]{bone_map_path.resolve()}[/bold][/dim]")
     if do_merge:
-        bark_hint = f"pug bark {project}" if project else "pug bark"
-        console.print(f"[dim]Merged [bold]{len(rows)}[/] commands in Bone Map. Run [bold]{bark_hint}[/] to regenerate the CLI. 🦴[/]")
+        console.print(f"[dim]Merged [bold]{len(rows)}[/] commands in Bone Map. Run [bold]pug bark {project}[/] to regenerate the CLI. 🦴[/]")
     else:
         base_hint = ""
         if (pug_dir / "last_sniff_url").exists():
@@ -369,10 +370,8 @@ def cmd_chew(markdown_source: str, merge: bool = False, project: Optional[str] =
                 console.print(f"[dim]Auth from docs: [bold]{config['auth_type']}[/] (header: {config.get('auth_header', '')}, env: {config.get('api_key_env', '')})[/]")
         else:
             console.print(f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL: [bold]{base_hint or '(set in bark)'}[/][/]")
-        bark_hint = f"pug bark {project}" if project else "pug bark"
-        console.print(f"[dim]Run [bold]{bark_hint}[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
-    if project:
-        console.print(f"[dim]Project [bold]{project}[/]: bone map is isolated in [bold].pug/{project}/[/].[/]")
+        console.print(f"[dim]Run [bold]pug bark {project}[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
+    console.print(f"[dim]Bone map: [bold].pug/{project}/[/].[/]")
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
 
 
@@ -400,17 +399,19 @@ def cmd_pant():
         console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/] [dim](Key might be invalid or rate-limited.)[/]")
 
 
-def cmd_bark(project_name: Optional[str] = None):
+def cmd_bark(project_name: str):
     """BARK: System compiler — smell test, then generate Go CLI + CLAUDE.md, SKILL.md, MCP (one folder per API)."""
     _load_dotenv_into_env()
-    # Per-project bone map: .pug/<name>/bone_map.json if it exists; else legacy .pug/bone_map.json
+    if not project_name or not project_name.strip():
+        console.print(f"[{ERROR}]Bark! Project name is required. Example: [bold]pug bark my-api[/] 🐶[/]")
+        return
+    project_name = project_name.strip()
     pug_root = Path(".pug")
-    if project_name and (pug_root / project_name / "bone_map.json").exists():
-        bone_map_path = pug_root / project_name / "bone_map.json"
-        pug_dir = pug_root / project_name
-    else:
-        bone_map_path = pug_root / "bone_map.json"
-        pug_dir = pug_root
+    pug_dir = pug_root / project_name
+    bone_map_path = pug_dir / "bone_map.json"
+    if not bone_map_path.exists():
+        console.print(f"[{ERROR}]Bark! No Bone Map for [bold]{project_name}[/]. Run [bold]pug sniff {project_name} <url>[/] then [bold]pug chew {project_name}[/] first. 🐶[/]")
+        return
 
     console.print()
     console.print(
@@ -538,17 +539,13 @@ def cmd_bark(project_name: Optional[str] = None):
         console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
         if bin_path.exists():
             console.print(f"[dim]Test it: [bold]pug run {cli_name} web-search --q hello[/] (loads .env + base URL + auth for you). Or [bold]pug run {cli_name} --help[/].[/]")
-        hint_refine = f"pug refine --project {cli_name}" if pug_dir != pug_root else "pug refine"
-        console.print(
-            f"[dim]To add or change commands later: [bold]{hint_refine}[/] then [bold]pug bark {cli_name}[/]. "
-            f"Multi-API: use [bold]--project <name>[/] on sniff/chew/refine so each API has its own bone map in [bold].pug/<name>/[/].[/]"
-        )
+            console.print(f"[dim]To add or change commands later: [bold]pug refine {cli_name}[/] then [bold]pug bark {cli_name}[/]. 🦴[/]")
         else:
             build_log = out_dir / "build.log"
             hint = f" See [bold]{build_log}[/] for errors." if build_log.exists() else ""
             console.print(
                 f"[dim][yellow]Binary not built[/] (Pug builds it automatically when [bold]Go[/] is installed).{hint} "
-                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
+                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark {cli_name}[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
             )
     except SystemExit:
         raise
@@ -560,15 +557,18 @@ def cmd_bark(project_name: Optional[str] = None):
         console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
 
 
-def cmd_refine(project: Optional[str] = None):
+def cmd_refine(project: str):
     """REFINE: Chat with Pug (LLM) to tweak the Bone Map until ready; then run pug bark.
-    If project is set, edit .pug/<project>/bone_map.json (so each API has its own map).
+    Project is required; edits .pug/<project>/bone_map.json.
     """
+    if not project or not project.strip():
+        console.print(f"[{ERROR}]Bark! Project name is required. Example: [bold]pug refine my-api[/] 🐶[/]")
+        return
+    project = project.strip()
     pug_dir = _pug_project_dir(project)
     bone_map_path = pug_dir / "bone_map.json"
     if not bone_map_path.exists():
-        hint = f" Run [bold]pug chew --project {project}[/] first." if project else " Run [bold]pug chew[/] first."
-        console.print(f"[{ERROR}]Bark! No Bone Map at [bold]{bone_map_path}[/].{hint} 🐶[/]")
+        console.print(f"[{ERROR}]Bark! No Bone Map at [bold]{bone_map_path}[/]. Run [bold]pug chew {project}[/] first. 🐶[/]")
         return
     bone_map = json.loads(bone_map_path.read_text(encoding="utf-8"))
     if not isinstance(bone_map, list):
@@ -578,10 +578,9 @@ def cmd_refine(project: Optional[str] = None):
     console.print(
         Panel.fit(
             f"[bold {GOLD}]🐶 Refine the Bone Map 🦴[/]\n\n"
-            "[dim]This Bone Map is what [bold]pug bark[/] uses to generate your CLI.\n"
-            + (f"Project [bold]{project}[/]: [bold].pug/{project}/[/]\n" if project else "")
-            + "Ask Pug to add, remove, or change commands (e.g. \"add image-search GET /res/v1/images/search with --q\").\n"
-            "Say [bold]done[/] or [bold]ready[/] when you want to run [bold]pug bark[/] (same project folder will be regenerated).[/]",
+            f"[dim]Project [bold]{project}[/]: [bold].pug/{project}/[/]\n"
+            "This Bone Map drives [bold]pug bark[/]. Ask Pug to add, remove, or change commands (e.g. \"add image-search GET /res/v1/images/search with --q\").\n"
+            "Say [bold]done[/] or [bold]ready[/] when you want to run [bold]pug bark {project}[/] (same folder regenerated).[/]".format(project=project),
             border_style=BORDER,
             title=f"[{GOLD}] refine 🐾 [/]",
             title_align="left",
@@ -600,13 +599,11 @@ def cmd_refine(project: Optional[str] = None):
         try:
             user_input = Prompt.ask(f"[{GOLD}]You[/]")
         except (KeyboardInterrupt, EOFError):
-            bark_hint = f"pug bark {project}" if project else "pug bark"
-            console.print(f"[dim]Bye. Run [bold]{bark_hint}[/] when ready. 🐶[/]")
+            console.print(f"[dim]Bye. Run [bold]pug bark {project}[/] when ready. 🐶[/]")
             break
         line = (user_input or "").strip().lower()
         if line in ("done", "ready", "exit", "quit", "q") or not user_input.strip():
-            bark_hint = f"pug bark {project}" if project else "pug bark"
-            console.print(f"[dim]Run [bold]{bark_hint}[/] to verify and generate. 🐶[/]")
+            console.print(f"[dim]Run [bold]pug bark {project}[/] to verify and generate. 🐶[/]")
             break
         console.print("[italic]Pug is thinking... (Heavy breathing noises)[/]")
         try:
@@ -632,8 +629,7 @@ def cmd_refine(project: Optional[str] = None):
                 table.add_row(*row)
             console.print()
             console.print(table)
-            bark_hint = f"pug bark {project}" if project else "pug bark"
-            console.print(f"[dim]Bone Map updated. Say [bold]done[/] when ready for [bold]{bark_hint}[/].[/]")
+            console.print(f"[dim]Bone Map updated. Say [bold]done[/] when ready for [bold]pug bark {project}[/].[/]")
         history.append({"role": "user", "content": user_input})
         history.append({"role": "assistant", "content": reply})
 
@@ -683,43 +679,38 @@ def main():
     # init: save Anthropic API key to .env
     subparsers.add_parser("init", help="🐾 Set up API key (saved to .env)")
 
-    # sniff: scrape URL, strip trash, return Markdown
+    # sniff: scrape URL, strip trash, return Markdown (project required)
     sniff_parser = subparsers.add_parser("sniff", help="🐾 Sniff a URL (scrape and clean to Markdown)")
+    sniff_parser.add_argument("project", help="Project name (e.g. api-search-brave-com-cli); stored in .pug/<project>/")
     sniff_parser.add_argument("url", nargs="?", default=None, help="URL to sniff (omit when using --resniff)")
     sniff_parser.add_argument("--resniff", action="store_true", help="Re-fetch the last sniffed URL for this project (no URL needed)")
     sniff_parser.add_argument("--save-as", metavar="name", help="Save to .pug/<project>/sniff_<name>.md instead of last_sniff.md (for adding from another URL)")
-    sniff_parser.add_argument("--project", metavar="name", help="Use .pug/<name>/ so this API's bone map is separate (e.g. --project stripe-cli)")
 
-    # chew: AI suggests CLI structure from Markdown; show The Bone Map
+    # chew: AI suggests CLI structure from Markdown (project required)
     chew_parser = subparsers.add_parser("chew", help="🐾 CHEW: suggest CLI from Markdown (query params → flags)")
+    chew_parser.add_argument("project", help="Project name (same as sniff/bark); uses .pug/<project>/")
     chew_parser.add_argument(
         "source",
         nargs="?",
         default="-",
-        help="Markdown file, or '-' for stdin; if omitted, use last sniff (.pug/last_sniff.md)",
+        help="Markdown file, or '-' for stdin; if omitted, use last sniff (.pug/<project>/last_sniff.md)",
     )
     chew_parser.add_argument(
         "--merge",
         action="store_true",
         help="Merge new commands from the doc into the existing Bone Map (use after sniff --save-as)",
     )
-    chew_parser.add_argument("--project", metavar="name", help="Use .pug/<name>/ (same as sniff/refine/bark; keeps APIs separate)")
 
     # pant: live auth validation (is the key a treat or a trick?)
     subparsers.add_parser("pant", help="🐾 PANT: test API key (treat or trick?)")
 
-    # bark: system compiler — Go CLI, CLAUDE.md, SKILL.md, MCP; smell test + refine chat; one folder per API
-    bark_parser = subparsers.add_parser("bark", help="🐾 BARK: generate Go CLI + docs + MCP (folder per API, or pass name)")
-    bark_parser.add_argument(
-        "name",
-        nargs="?",
-        default=None,
-        help="Project directory name (e.g. spotify-cli); default: derived from API base URL",
-    )
+    # bark: generate Go CLI + docs + MCP (project required)
+    bark_parser = subparsers.add_parser("bark", help="🐾 BARK: generate Go CLI + docs + MCP (one folder per project)")
+    bark_parser.add_argument("project", help="Project name (same as sniff/chew/refine); uses .pug/<project>/bone_map.json")
 
-    # refine: chat with Pug to tweak Bone Map until ready, then bark
+    # refine: chat with Pug to tweak Bone Map (project required)
     refine_parser = subparsers.add_parser("refine", help="🐾 REFINE: chat with Pug to improve Bone Map, then run bark when ready")
-    refine_parser.add_argument("--project", metavar="name", help="Edit .pug/<name>/bone_map.json (same name you use for bark)")
+    refine_parser.add_argument("project", help="Project name (same as sniff/chew/bark); edits .pug/<project>/bone_map.json")
 
     # run: execute a generated CLI with .env + config (base URL, auth) set
     # Only "project" is parsed; rest is pass-through so --q etc. go to the child CLI
@@ -739,19 +730,19 @@ def main():
         cmd_init()
     elif args.command == "sniff":
         cmd_sniff(
-            args.url,
+            args.project,
+            url=args.url,
             save_as=getattr(args, "save_as", None),
-            project=getattr(args, "project", None),
             resniff=getattr(args, "resniff", False),
         )
     elif args.command == "chew":
-        cmd_chew(args.source, merge=getattr(args, "merge", False), project=getattr(args, "project", None))
+        cmd_chew(args.project, markdown_source=args.source, merge=getattr(args, "merge", False))
     elif args.command == "pant":
         cmd_pant()
     elif args.command == "bark":
-        cmd_bark(project_name=args.name)
+        cmd_bark(project_name=args.project)
     elif args.command == "refine":
-        cmd_refine(project=getattr(args, "project", None))
+        cmd_refine(args.project)
     elif args.command == "run":
         if args.project in ("--help", "-h") and not unknown:
             console.print(run_parser.format_help())
