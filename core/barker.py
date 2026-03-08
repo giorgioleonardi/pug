@@ -535,12 +535,14 @@ def bark(
     project_name: Optional[str] = None,
     *,
     skip_smell_test: bool = False,
-    refine_chat_on_fail: Optional[Callable[[str], bool]] = None,
+    refine_chat_on_fail: Optional[Callable[..., Any]] = None,
 ) -> Path:
     """
     System compiler: smell test -> [refine chat if fail] -> generate Go CLI, CLAUDE.md, SKILL.md, mcp.json, MCP server.
-    project_name: output directory (e.g. spotify-cli). If None, derived from API base URL (e.g. jsonplaceholder-typicode-com-cli).
-    refine_chat_on_fail(error_message) returns True to continue anyway, False to abort.
+    project_name: output directory (e.g. spotify-cli). If None, derived from API base URL.
+    refine_chat_on_fail(err, pug_dir, config) returns:
+      True = continue to generate anyway; False = abort;
+      dict with "retry" key = config was updated, reload and retry smell test.
     Returns the generated project directory.
     """
     bone_map = load_bone_map(bone_map_path)
@@ -555,12 +557,24 @@ def bark(
     cli_name = out_dir.name
 
     if not skip_smell_test:
-        ok, err = smell_test(bone_map, base_url, auth_type, api_key_env)
-        if not ok and refine_chat_on_fail:
-            if not refine_chat_on_fail(err):
+        while True:
+            ok, err = smell_test(bone_map, base_url, auth_type, api_key_env)
+            if ok:
+                break
+            if not refine_chat_on_fail:
+                raise RuntimeError(err)
+            result = refine_chat_on_fail(err, pug_dir, config)
+            if result is True:
+                break
+            if result is False:
                 raise SystemExit(1)
-        elif not ok:
-            raise RuntimeError(err)
+            if isinstance(result, dict) and result.get("retry"):
+                config = load_bark_config(pug_dir)
+                base_url = config["base_url"]
+                auth_type = config["auth_type"]
+                api_key_env = config["api_key_env"]
+                continue
+            raise SystemExit(1)
 
     generate_go_project(bone_map, config, out_dir)
     (out_dir / "CLAUDE.md").write_text(generate_claude_md(bone_map, base_url, cli_name), encoding="utf-8")

@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -11,8 +12,8 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from core.architect import chew, plan_to_bone_map_rows, save_bone_map, validate_anthropic_key
-from core.barker import bark as run_bark
+from core.architect import chew, plan_to_bone_map_rows, refine_turn, save_bone_map, validate_anthropic_key
+from core.barker import bark as run_bark, save_bark_config
 from core.sniffer import sniff
 
 console = Console()
@@ -54,9 +55,33 @@ def welcome(*, show_ascii_art: bool = False):
     console.print()
 
 
+def _env_has_anthropic_key() -> bool:
+    """True if .env exists and has a non-empty ANTHROPIC_API_KEY."""
+    p = Path(".env")
+    if not p.exists():
+        return False
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("ANTHROPIC_API_KEY="):
+            val = line.split("=", 1)[1].strip().strip('"').strip("'")
+            return bool(val)
+    return False
+
+
 def cmd_init():
-    """Ask for Anthropic API Key and save to .env (Pug-themed)."""
+    """Ask for Anthropic API Key and save to .env (Pug-themed). Skip prompt if key already set."""
     console.print()
+    if _env_has_anthropic_key():
+        console.print(
+            Panel.fit(
+                f"[{SUCCESS}]Huff! Key already set in .env 🦴[/]\n\n"
+                "[dim]Run [bold]pug pant[/] to verify, or edit .env to change it.[/]",
+                border_style=BORDER,
+                title=f"[{GOLD}] init 🐾 [/]",
+                title_align="left",
+            )
+        )
+        return
     console.print(
         Panel.fit(
             f"[bold {GOLD}]🐶 Time to sniff out your API key[/]\n\n"
@@ -230,6 +255,14 @@ def cmd_chew(markdown_source: str):
     console.print()
     console.print(table)
     console.print(f"[dim]Saved to [bold]{BONE_MAP_PATH.resolve()}[/bold][/dim]")
+    # Insights: command count, base URL hint
+    base_hint = ""
+    if (PUG_DIR / "last_sniff_url").exists():
+        base_hint = (PUG_DIR / "last_sniff_url").read_text(encoding="utf-8").strip()
+    console.print(
+        f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL from sniff: [bold]{base_hint or '(set in bark)'}[/]. "
+        "Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]"
+    )
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
 
 
@@ -271,12 +304,31 @@ def cmd_bark(project_name: Optional[str] = None):
     )
     console.print()
 
-    def refine_chat(err: str):
+    def refine_chat(err: str, pug_dir: Path, config: dict):
         console.print(f"[{ERROR}]Bark! Smell test failed: {err}[/]")
-        console.print("[dim]Edit .pug/bone_map.json or .pug/bark_config.json (base_url, auth_type), then run [bold]pug bark[/] again.[/]")
         try:
-            answer = Prompt.ask("[tan]Continue and generate anyway? (y/N)[/]", default="n")
-            return answer.strip().lower() in ("y", "yes")
+            configure = Prompt.ask(
+                "[tan]Configure auth for this API? (bearer / api_key_header / n to skip)[/]",
+                default="n",
+            )
+            configure = configure.strip().lower()
+            if configure in ("bearer", "api_key_header"):
+                env_var = Prompt.ask(
+                    f"[tan]Env var name for the key (e.g. {config.get('api_key_env', 'API_KEY')})[/]",
+                    default=config.get("api_key_env", "API_KEY"),
+                )
+                save_bark_config(
+                    pug_dir,
+                    base_url=config["base_url"],
+                    auth_type=configure,
+                    api_key_env=(env_var or "API_KEY").strip(),
+                )
+                console.print("[dim]Saved. Set the env var and we'll retry the smell test.[/]")
+                return {"retry": True}
+            if configure == "n" or not configure:
+                answer = Prompt.ask("[tan]Continue and generate anyway? (y/N)[/]", default="n")
+                return answer.strip().lower() in ("y", "yes")
+            return False
         except (KeyboardInterrupt, EOFError):
             return False
 
@@ -293,6 +345,73 @@ def cmd_bark(project_name: Optional[str] = None):
         console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
     except Exception as e:
         console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
+
+
+def cmd_refine():
+    """REFINE: Chat with Pug (LLM) to tweak the Bone Map until ready; then run pug bark."""
+    if not BONE_MAP_PATH.exists():
+        console.print(f"[{ERROR}]Bark! No Bone Map. Run [bold]pug chew[/] first. 🐶[/]")
+        return
+    bone_map = json.loads(BONE_MAP_PATH.read_text(encoding="utf-8"))
+    if not isinstance(bone_map, list):
+        console.print(f"[{ERROR}]Bark! bone_map.json must be a JSON array.[/]")
+        return
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold {GOLD}]🐶 Refine the Bone Map 🦴[/]\n\n"
+            "[dim]Ask Pug to add, remove, or change commands. Say [bold]done[/] or [bold]ready[/] when you want to run [bold]pug bark[/].[/]",
+            border_style=BORDER,
+            title=f"[{GOLD}] refine 🐾 [/]",
+            title_align="left",
+        )
+    )
+    console.print()
+    history = []
+    table_args = {
+        "title": f"[bold {GOLD}]🦴 The Bone Map 🐾[/]",
+        "title_style": f"bold {BROWN}",
+        "border_style": BORDER,
+        "header_style": f"bold {TAN}",
+        "show_header": True,
+    }
+    while True:
+        try:
+            user_input = Prompt.ask(f"[{GOLD}]You[/]")
+        except (KeyboardInterrupt, EOFError):
+            console.print("[dim]Bye. Run [bold]pug bark[/] when ready. 🐶[/]")
+            break
+        line = (user_input or "").strip().lower()
+        if line in ("done", "ready", "exit", "quit", "q") or not user_input.strip():
+            console.print(f"[dim]Run [bold]pug bark[/] to verify and generate. 🐶[/]")
+            break
+        console.print("[italic]Pug is thinking... (Heavy breathing noises)[/]")
+        try:
+            reply, updated = refine_turn(user_input, history, bone_map)
+        except FileNotFoundError:
+            console.print(f"[{ERROR}]Bark! No API key. Run [bold]pug init[/].[/]")
+            break
+        except Exception as e:
+            console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
+            continue
+        console.print(f"[tan]Pug[/]: {reply}")
+        if updated:
+            save_bone_map(updated, BONE_MAP_PATH)
+            bone_map = updated
+            rows = plan_to_bone_map_rows(bone_map)
+            table = Table(**table_args)
+            table.add_column("Command", style=TAN)
+            table.add_column("Method", style="dim")
+            table.add_column("Path", style="dim")
+            table.add_column("Flags", style="dim")
+            table.add_column("Notes", style="dim")
+            for row in rows:
+                table.add_row(*row)
+            console.print()
+            console.print(table)
+            console.print("[dim]Bone Map updated. Say [bold]done[/] when ready for [bold]pug bark[/].[/]")
+        history.append({"role": "user", "content": user_input})
+        history.append({"role": "assistant", "content": reply})
 
 
 def main():
@@ -330,6 +449,9 @@ def main():
         help="Project directory name (e.g. spotify-cli); default: derived from API base URL",
     )
 
+    # refine: chat with Pug to tweak Bone Map until ready, then bark
+    subparsers.add_parser("refine", help="🐾 REFINE: chat with Pug to improve Bone Map, then run bark when ready")
+
     args = parser.parse_args()
 
     welcome(show_ascii_art=(args.command == "init"))
@@ -344,9 +466,11 @@ def main():
         cmd_pant()
     elif args.command == "bark":
         cmd_bark(project_name=args.name)
+    elif args.command == "refine":
+        cmd_refine()
     elif args.command is None:
         console.print(f"[dim]Use [bold {GOLD}]pug init[/] to set your API key. 🐶[/]")
-        console.print("[dim]Commands: sniff, chew, pant, bark, huff (coming soon).[/]")
+        console.print("[dim]Commands: sniff, chew, pant, refine, bark, huff (coming soon).[/]")
 
 
 if __name__ == "__main__":
