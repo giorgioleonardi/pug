@@ -1,0 +1,32 @@
+# Environment and secrets
+.env
+venv/
+.venv/
+env/
+
+# Build and install
+*.egg-info/
+*.egg
+build/
+dist/
+
+# PUG runtime output (regenerate with: pug sniff → pug chew → pug bark)
+.pug/
+dog-cli/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
