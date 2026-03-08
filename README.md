@@ -151,4 +151,4 @@ pug/
 
 ## License
 
-MIT (or your choice).
+MIT. See [LICENSE](LICENSE).
