@@ -35,27 +35,51 @@ Rules:
 3. Nested routes: list each as its own command. For paths with path params (e.g. /posts/1/comments, /users/1/posts), use a command name that describes the resource and add a flag for the parent ID (e.g. --post-id, --user-id). Example: GET /posts/1/comments -> command "list-post-comments", path "/posts/{id}/comments", flags ["--post-id"] (or "--id" for the post).
 4. Filtering and query params: for any query parameter or filter (userId, limit, search, page, _limit, etc.), add a matching flag in kebab-case: userId -> --user-id, _limit -> --limit, postId -> --post-id. Include them in "flags" for that row. If the docs mention rate limits or pagination, add a note in "notes" (e.g. "Supports --limit; API may rate-limit").
 5. Each item must have: "command" (lowercase-hyphen name), "method", "path" (use {id} or {userId} etc. for path params), "flags" (array of flag names like "--user-id", "--limit", "--post-id"), and optionally "notes" (one line).
-6. Return ONLY a single JSON array. No markdown fences or explanation.
+6. API server and auth: If the docs specify the API base URL for requests (e.g. "Server: https://api.example.com", "Base URL", or a cURL example with a host), output exactly one line first: BASE_URL: <url> (the URL only, no trailing slash). If the docs specify authentication (required header or Bearer), output: AUTH_TYPE: bearer or AUTH_TYPE: api_key_header. For api_key_header, if the header name is not X-API-Key (e.g. X-Subscription-Token, Authorization), output: AUTH_HEADER: <exact header name>. Optionally: AUTH_ENV: <suggested env var name e.g. BRAVE_SUBSCRIPTION_TOKEN>. Put these lines before the JSON. If the docs do not specify a server or auth, omit these lines.
+7. Then output ONLY the JSON array. No markdown fences or extra explanation after the array.
 
-Example format:
-[
-  {"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--user-id", "--limit"], "notes": "List all posts, optional filter by user"},
-  {"command": "get-post", "method": "GET", "path": "/posts/{id}", "flags": ["--id"], "notes": "Get a single post"},
-  {"command": "list-post-comments", "method": "GET", "path": "/posts/{id}/comments", "flags": ["--post-id"], "notes": "Comments for a post"}
-]"""
+Example with auth and server:
+BASE_URL: https://api.search.brave.com/res
+AUTH_TYPE: api_key_header
+AUTH_HEADER: X-Subscription-Token
+AUTH_ENV: BRAVE_SUBSCRIPTION_TOKEN
+[{"command": "search", "method": "GET", "path": "/v1/web/search", "flags": ["--q"], "notes": "Web search"}]
+
+Example with no auth:
+[{"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--limit"], "notes": "List posts"}]"""
 
 
-def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] = None) -> list[dict[str, Any]]:
+def _parse_chew_config(lines: list[str]) -> tuple[list[str], dict[str, Any]]:
+    """Extract BASE_URL, AUTH_TYPE, AUTH_HEADER, AUTH_ENV from start of response; return (remaining lines, config)."""
+    config: dict[str, Any] = {}
+    i = 0
+    for line in lines:
+        s = line.strip()
+        if s.startswith("BASE_URL:"):
+            config["base_url"] = s.split(":", 1)[1].strip().rstrip("/")
+        elif s.startswith("AUTH_TYPE:"):
+            config["auth_type"] = s.split(":", 1)[1].strip().lower()
+        elif s.startswith("AUTH_HEADER:"):
+            config["auth_header"] = s.split(":", 1)[1].strip()
+        elif s.startswith("AUTH_ENV:"):
+            config["api_key_env"] = s.split(":", 1)[1].strip() or "API_KEY"
+        else:
+            break
+        i += 1
+    return lines[i:], config
+
+
+def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] = None) -> tuple[list[dict[str, Any]], Optional[dict[str, Any]]]:
     """
-    Use Claude to analyze API docs Markdown and return a CLI plan.
-    Query params in the docs are turned into suggested flags (--limit, --search, etc.).
+    Use Claude to analyze API docs Markdown and return (CLI plan, optional config).
+    Config can have base_url, auth_type, auth_header, api_key_env when the docs specify them.
     """
     key = api_key or _load_api_key(env_path)
     client = anthropic.Anthropic(api_key=key)
     user_content = (
         "Analyze this API documentation and suggest a CLI structure. "
         "For any query parameters you see, add matching flags (e.g. limit -> --limit, search -> --search). "
-        "Return only a JSON array of objects with keys: command, method, path, flags (array), notes (optional).\n\n"
+        "If the docs specify an API server URL or auth (header name, Bearer), output BASE_URL / AUTH_TYPE / AUTH_HEADER / AUTH_ENV lines first, then the JSON array.\n\n"
         "---\n" + markdown
     )
     response = client.messages.create(
@@ -75,10 +99,21 @@ def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] 
         raise ValueError(
             "Pug got an empty response from the model. The sniffed docs might be too short—try a URL with more API endpoints, or sniff again."
         )
-    # Try to get JSON: whole response, or inside ```json ... ```, or first [...] span
+    lines = text.splitlines()
+    remaining, config = _parse_chew_config(lines)
+    json_text = "\n".join(remaining).strip()
+    # Normalize config: only return if we got at least base_url or auth_type
+    if not config.get("base_url") and not config.get("auth_type"):
+        config = None
+    else:
+        config.setdefault("auth_type", "none")
+        config.setdefault("api_key_env", "API_KEY")
+        if config.get("auth_type") == "api_key_header" and "auth_header" not in config:
+            config["auth_header"] = "X-API-Key"
+    # Try to get JSON from json_text
     for candidate in [
-        text,
-        re.sub(r"^```(?:json)?\s*", "", text).replace("```", "").strip(),
+        json_text,
+        re.sub(r"^```(?:json)?\s*", "", json_text).replace("```", "").strip(),
     ]:
         if candidate.startswith("```"):
             candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
@@ -97,12 +132,14 @@ def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] 
             "The docs might be too short or the page structure didn't scrape well—try a URL with more endpoints (e.g. jsonplaceholder.typicode.com) or run chew again."
         )
     if isinstance(data, list):
-        return data
-    if isinstance(data, dict) and "commands" in data:
-        return data["commands"]
-    if isinstance(data, dict) and "plan" in data:
-        return data["plan"]
-    return [data] if isinstance(data, dict) else []
+        plan = data
+    elif isinstance(data, dict) and "commands" in data:
+        plan = data["commands"]
+    elif isinstance(data, dict) and "plan" in data:
+        plan = data["plan"]
+    else:
+        plan = [data] if isinstance(data, dict) else []
+    return plan, config
 
 
 def plan_to_bone_map_rows(plan: list[dict[str, Any]]) -> list[tuple[str, str, str, str, str]]:

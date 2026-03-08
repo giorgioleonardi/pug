@@ -4,6 +4,9 @@ import threading
 import time
 from typing import Callable, Optional
 
+# Seconds to wait after load for JS-rendered API docs (e.g. OpenAPI/Swagger UIs)
+SNIFF_WAIT_AFTER_LOAD = 3
+
 import html2text
 from playwright.sync_api import sync_playwright
 
@@ -34,7 +37,10 @@ def _sniff_impl(url: str) -> str:
         browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # Wait for load so JS-rendered API docs have time to appear
+            page.goto(url, wait_until="load", timeout=30000)
+            # Give dynamic content (e.g. OpenAPI/Swagger UIs) a moment to render
+            time.sleep(SNIFF_WAIT_AFTER_LOAD)
             _remove_trash(page)
             # Prefer main content: main, article, or body
             content = page.evaluate(

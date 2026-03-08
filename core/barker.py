@@ -88,6 +88,7 @@ def load_bark_config(pug_dir: Path) -> dict[str, Any]:
     base_url = None
     auth_type = "none"
     api_key_env = "API_KEY"
+    auth_header = "X-API-Key"
 
     if (pug_dir / "last_sniff_url").exists():
         base_url = (pug_dir / "last_sniff_url").read_text(encoding="utf-8").strip()
@@ -98,18 +99,30 @@ def load_bark_config(pug_dir: Path) -> dict[str, Any]:
             base_url = data.get("base_url") or base_url
             auth_type = data.get("auth_type", "none")
             api_key_env = data.get("api_key_env", "API_KEY")
+            auth_header = data.get("auth_header", "X-API-Key")
         except Exception:
             pass
-    return {"base_url": base_url or "https://api.example.com", "auth_type": auth_type, "api_key_env": api_key_env}
+    return {
+        "base_url": base_url or "https://api.example.com",
+        "auth_type": auth_type,
+        "api_key_env": api_key_env,
+        "auth_header": auth_header,
+    }
 
 
-def save_bark_config(pug_dir: Path, base_url: str, auth_type: str = "none", api_key_env: str = "API_KEY") -> None:
+def save_bark_config(
+    pug_dir: Path,
+    base_url: str,
+    auth_type: str = "none",
+    api_key_env: str = "API_KEY",
+    auth_header: Optional[str] = None,
+) -> None:
     """Persist bark config for next run."""
     pug_dir.mkdir(parents=True, exist_ok=True)
-    (pug_dir / "bark_config.json").write_text(
-        json.dumps({"base_url": base_url, "auth_type": auth_type, "api_key_env": api_key_env}, indent=2),
-        encoding="utf-8",
-    )
+    payload = {"base_url": base_url, "auth_type": auth_type, "api_key_env": api_key_env}
+    if auth_header:
+        payload["auth_header"] = auth_header
+    (pug_dir / "bark_config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 # --- Smell test (real API call) ---
@@ -118,10 +131,12 @@ def smell_test(
     base_url: str,
     auth_type: str = "none",
     api_key_env: str = "API_KEY",
+    auth_header: Optional[str] = None,
 ) -> tuple[bool, str]:
     """
     Run a real GET request against the API to verify base_url and auth.
     Picks the first GET entry that has no path params (or uses id=1).
+    auth_header: for api_key_header, the header name (e.g. X-Subscription-Token). Default X-API-Key.
     Returns (success, error_message).
     """
     if not requests:
@@ -155,7 +170,8 @@ def smell_test(
         import os
         key = os.environ.get(api_key_env)
         if key:
-            headers["X-API-Key"] = key  # or Authorization, configurable
+            header_name = auth_header or "X-API-Key"
+            headers[header_name] = key
 
     try:
         r = requests.get(url, headers=headers or None, timeout=15)
@@ -200,6 +216,7 @@ def generate_go_project(bone_map: list[dict[str, Any]], config: dict[str, Any], 
     base_url = config.get("base_url", "https://api.example.com")
     auth_type = config.get("auth_type", "none")
     api_key_env = config.get("api_key_env", "API_KEY")
+    auth_header = config.get("auth_header") or "X-API-Key"
 
     # go.mod
     (out_dir / "go.mod").write_text(f"""module {cli_name}
@@ -245,7 +262,7 @@ var rootCmd = &cobra.Command{{
 func init() {{
 \trootCmd.PersistentFlags().StringVar(&baseURL, "base-url", getEnv("{env_prefix}_BASE_URL", ""), "API base URL")
 \trootCmd.PersistentFlags().StringVar(&bearer, "bearer", getEnv("{env_prefix}_BEARER_TOKEN", ""), "Bearer token")
-\trootCmd.PersistentFlags().StringVar(&apiKey, "api-key", getEnv("{env_prefix}_API_KEY", ""), "API key")
+\trootCmd.PersistentFlags().StringVar(&apiKey, "api-key", getEnv("{api_key_env}", ""), "API key / token")
 \trootCmd.PersistentFlags().StringVar(&authType, "auth", getEnv("{env_prefix}_AUTH", "none"), "Auth: none, bearer, api_key_header")
 }}
 
@@ -275,7 +292,7 @@ func doRequest(method, path string, query map[string]string, body []byte) (*http
 \t\treq.Header.Set("Authorization", "Bearer "+bearer)
 \t}}
 \tif authType == "api_key_header" && apiKey != "" {{
-\t\treq.Header.Set("X-API-Key", apiKey)
+\t\treq.Header.Set("{auth_header}", apiKey)
 \t}}
 \tq := req.URL.Query()
 \tfor k, v := range query {{
@@ -438,14 +455,19 @@ def generate_mcp_manifest(project_dir: Path, base_url: str, cli_name: str) -> st
     return json.dumps(mcp, indent=2)
 
 
-def generate_mcp_server_script(bone_map: list[dict[str, Any]], project_dir: Path, cli_name: str) -> str:
+def generate_mcp_server_script(
+    bone_map: list[dict[str, Any]], project_dir: Path, cli_name: str, config: Optional[dict[str, Any]] = None
+) -> str:
     """Generate a Node MCP server (mcp-server.cjs) that exposes each endpoint as a tool."""
+    config = config or {}
     tools_desc = []
     for entry in bone_map:
         info = _build_method_info(entry)
         # pathParams: names in path e.g. ["id"]; we need param_names for arg lookup (e.g. post_id)
         tools_desc.append((info["command"], info["notes"], info["http_method"], info["path"], info["path_param_names"], info["param_names"], info["query_params"]))
     env_prefix = cli_name.upper().replace("-", "_")
+    api_key_env = config.get("api_key_env", "API_KEY")
+    auth_header = config.get("auth_header", "X-API-Key")
     # Simple CJS script: env block as f-string, rest as plain string (JS uses { everywhere)
     script_head = f"""// Generated by PUG bark — MCP server for {cli_name} API
 const http = require("http");
@@ -453,7 +475,7 @@ const https = require("https");
 
 const baseURL = process.env.{env_prefix}_BASE_URL || "";
 const bearer = process.env.{env_prefix}_BEARER_TOKEN || "";
-const apiKey = process.env.{env_prefix}_API_KEY || "";
+const apiKey = process.env.{api_key_env} || "";
 
 """
     script = script_head + """
@@ -462,7 +484,7 @@ function request(method, path, query, body, cb) {
   Object.entries(query || {}).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
   const opts = { method, headers: {} };
   if (bearer) opts.headers["Authorization"] = "Bearer " + bearer;
-  if (apiKey) opts.headers["X-API-Key"] = apiKey;
+  if (apiKey) opts.headers["__AUTH_HEADER__"] = apiKey;
   const lib = url.protocol === "https:" ? https : http;
   const req = lib.request(url, opts, (res) => {
     let data = "";
@@ -525,7 +547,7 @@ rl.on("line", (line) => {
   }
 });
 '''
-    return script
+    return script.replace("__AUTH_HEADER__", auth_header)
 
 
 # --- Orchestration ---
@@ -556,9 +578,10 @@ def bark(
     out_dir = Path(project_name)
     cli_name = out_dir.name
 
+    auth_header = config.get("auth_header")
     if not skip_smell_test:
         while True:
-            ok, err = smell_test(bone_map, base_url, auth_type, api_key_env)
+            ok, err = smell_test(bone_map, base_url, auth_type, api_key_env, auth_header=auth_header)
             if ok:
                 break
             if not refine_chat_on_fail:
@@ -573,6 +596,7 @@ def bark(
                 base_url = config["base_url"]
                 auth_type = config["auth_type"]
                 api_key_env = config["api_key_env"]
+                auth_header = config.get("auth_header")
                 continue
             raise SystemExit(1)
 
@@ -580,6 +604,6 @@ def bark(
     (out_dir / "CLAUDE.md").write_text(generate_claude_md(bone_map, base_url, cli_name), encoding="utf-8")
     (out_dir / "SKILL.md").write_text(generate_skill_md(bone_map, base_url, cli_name), encoding="utf-8")
     (out_dir / "mcp.json").write_text(generate_mcp_manifest(out_dir, base_url, cli_name), encoding="utf-8")
-    mcp_script = generate_mcp_server_script(bone_map, out_dir, cli_name)
+    mcp_script = generate_mcp_server_script(bone_map, out_dir, cli_name, config)
     (out_dir / "mcp-server.cjs").write_text(mcp_script, encoding="utf-8")
     return out_dir

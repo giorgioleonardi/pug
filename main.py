@@ -222,7 +222,7 @@ def cmd_chew(markdown_source: str):
 
     console.print("[italic]Pug is thinking... (Heavy breathing noises)[/]")
     try:
-        plan = chew(md)
+        plan, config = chew(md)
     except FileNotFoundError as e:
         console.print(f"[{ERROR}]Bark! Something's stuck in my throat ({e}).[/]")
         return
@@ -235,6 +235,18 @@ def cmd_chew(markdown_source: str):
 
     # Persist Bone Map JSON for pant/huff
     save_bone_map(plan, BONE_MAP_PATH)
+
+    # If the LLM extracted base URL and/or auth from the docs, save for bark
+    if config:
+        save_bark_config(
+            PUG_DIR,
+            base_url=config.get("base_url") or (PUG_DIR / "last_sniff_url").read_text(encoding="utf-8").strip() if (PUG_DIR / "last_sniff_url").exists() else "https://api.example.com",
+            auth_type=config.get("auth_type", "none"),
+            api_key_env=config.get("api_key_env", "API_KEY"),
+            auth_header=config.get("auth_header"),
+        )
+        if config.get("base_url"):
+            (PUG_DIR / "last_sniff_url").write_text(config["base_url"], encoding="utf-8")
 
     rows = plan_to_bone_map_rows(plan)
     table = Table(
@@ -255,14 +267,17 @@ def cmd_chew(markdown_source: str):
     console.print()
     console.print(table)
     console.print(f"[dim]Saved to [bold]{BONE_MAP_PATH.resolve()}[/bold][/dim]")
-    # Insights: command count, base URL hint
+    # Insights: command count, base URL and auth from docs when extracted
     base_hint = ""
     if (PUG_DIR / "last_sniff_url").exists():
         base_hint = (PUG_DIR / "last_sniff_url").read_text(encoding="utf-8").strip()
-    console.print(
-        f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL from sniff: [bold]{base_hint or '(set in bark)'}[/]. "
-        "Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]"
-    )
+    if config and config.get("base_url"):
+        console.print(f"[dim]Insights: [bold]{len(rows)}[/] commands · API base URL from docs: [bold]{config['base_url']}[/][/]")
+        if config.get("auth_type") != "none":
+            console.print(f"[dim]Auth from docs: [bold]{config['auth_type']}[/] (header: {config.get('auth_header', '')}, env: {config.get('api_key_env', '')})[/]")
+    else:
+        console.print(f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL: [bold]{base_hint or '(set in bark)'}[/][/]")
+    console.print(f"[dim]Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
 
 
@@ -307,6 +322,26 @@ def cmd_bark(project_name: Optional[str] = None):
     def refine_chat(err: str, pug_dir: Path, config: dict):
         console.print(f"[{ERROR}]Bark! Smell test failed: {err}[/]")
         try:
+            # 404 often means base URL is the docs page, not the API — offer to fix
+            if "404" in err:
+                console.print(
+                    "[dim]The base URL might be the docs page, not the API. "
+                    "Your sniff URL was used; the real API may be different (e.g. https://api.search.brave.com/res).[/]"
+                )
+                new_base = Prompt.ask(
+                    f"[tan]Enter API base URL (or Enter to keep [bold]{config['base_url']}[/])[/]",
+                    default="",
+                )
+                if new_base.strip():
+                    save_bark_config(
+                        pug_dir,
+                        base_url=new_base.strip().rstrip("/"),
+                        auth_type=config.get("auth_type", "none"),
+                        api_key_env=config.get("api_key_env", "API_KEY"),
+                        auth_header=config.get("auth_header"),
+                    )
+                    console.print("[dim]Saved. Retrying smell test.[/]")
+                    return {"retry": True}
             configure = Prompt.ask(
                 "[tan]Configure auth for this API? (bearer / api_key_header / n to skip)[/]",
                 default="n",
@@ -322,6 +357,7 @@ def cmd_bark(project_name: Optional[str] = None):
                     base_url=config["base_url"],
                     auth_type=configure,
                     api_key_env=(env_var or "API_KEY").strip(),
+                    auth_header=config.get("auth_header"),
                 )
                 console.print("[dim]Saved. Set the env var and we'll retry the smell test.[/]")
                 return {"retry": True}
