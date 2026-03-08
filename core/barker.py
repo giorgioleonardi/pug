@@ -160,6 +160,10 @@ def smell_test(
     else:
         return True, ""  # no GET to test
 
+    # Many search APIs require e.g. ?q=; avoid 422 on smell test
+    if "search" in path.lower() and "?" not in url:
+        url = url + "?q=test"
+
     headers = {}
     if auth_type == "bearer":
         import os

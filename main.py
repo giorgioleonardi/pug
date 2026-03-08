@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -29,7 +30,7 @@ DIM = "dim"
 
 # ASCII pug (compact, fits narrow terminals)
 PUG_ART = r"""
-   /^ ^\
+    /^ ^\
  / 0 0 \
  V\ Y /V
   / - \
@@ -53,6 +54,23 @@ def welcome(*, show_ascii_art: bool = False):
             border_style=BORDER,
         ))
     console.print()
+
+
+def _load_dotenv_into_env(env_path: Optional[Path] = None) -> None:
+    """Load .env into os.environ so smell test and generated CLI can use vars (e.g. BRAVE_SEARCH_TOKEN)."""
+    p = (env_path or Path.cwd()) / ".env"
+    if not p.exists():
+        return
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
 
 
 def _env_has_anthropic_key() -> bool:
@@ -307,6 +325,7 @@ def cmd_pant():
 
 def cmd_bark(project_name: Optional[str] = None):
     """BARK: System compiler — smell test, then generate Go CLI + CLAUDE.md, SKILL.md, MCP (one folder per API)."""
+    _load_dotenv_into_env()
     console.print()
     console.print(
         Panel.fit(
@@ -319,8 +338,19 @@ def cmd_bark(project_name: Optional[str] = None):
     )
     console.print()
 
+    def _looks_like_key(s: str) -> bool:
+        """True if input looks like a secret key rather than an env var name (e.g. BRAVE_SEARCH_TOKEN)."""
+        s = (s or "").strip()
+        if len(s) > 35 and s.replace("_", "").isalnum():
+            return True
+        if len(s) > 25 and "_" not in s and s.isalnum():
+            return True
+        return False
+
     def refine_chat(err: str, pug_dir: Path, config: dict):
         console.print(f"[{ERROR}]Bark! Smell test failed: {err}[/]")
+        if "422" in err:
+            console.print("[dim]422 often means a required parameter is missing (e.g. ?q= for search APIs). Auth may still be correct.[/]")
         try:
             # 404 often means base URL is the docs page, not the API — offer to fix
             if "404" in err:
@@ -342,29 +372,63 @@ def cmd_bark(project_name: Optional[str] = None):
                     )
                     console.print("[dim]Saved. Retrying smell test.[/]")
                     return {"retry": True}
-            configure = Prompt.ask(
-                "[tan]Configure auth for this API? (bearer / api_key_header / n to skip)[/]",
-                default="n",
+            suggested = (config.get("api_key_env") or "API_KEY").strip()
+            if _looks_like_key(suggested):
+                suggested = "API_KEY"
+            console.print(
+                "[dim]Add auth: [1] Paste API key now (saved to .env, used for smell test)  "
+                "[2] I'll set the env var myself (enter var name only)  [n] Skip[/]"
             )
-            configure = configure.strip().lower()
-            if configure in ("bearer", "api_key_header"):
-                env_var = Prompt.ask(
-                    f"[tan]Env var name for the key (e.g. {config.get('api_key_env', 'API_KEY')})[/]",
-                    default=config.get("api_key_env", "API_KEY"),
-                )
-                save_bark_config(
-                    pug_dir,
-                    base_url=config["base_url"],
-                    auth_type=configure,
-                    api_key_env=(env_var or "API_KEY").strip(),
-                    auth_header=config.get("auth_header"),
-                )
-                console.print("[dim]Saved. Set the env var and we'll retry the smell test.[/]")
-                return {"retry": True}
-            if configure == "n" or not configure:
-                answer = Prompt.ask("[tan]Continue and generate anyway? (y/N)[/]", default="n")
-                return answer.strip().lower() in ("y", "yes")
-            return False
+            choice = Prompt.ask("[tan]Choice (1 / 2 / n)[/]", default="n").strip().lower()
+            if choice == "1":
+                key_val = Prompt.ask("[tan]Paste API key (input hidden)[/]", password=True, default="")
+                if not key_val.strip():
+                    console.print("[dim]No key entered. Skipping.[/]")
+                else:
+                    var_name = Prompt.ask(
+                        f"[tan]Env var name to save in .env (e.g. BRAVE_SEARCH_TOKEN)[/]",
+                        default=suggested,
+                    ).strip() or suggested
+                    if _looks_like_key(var_name):
+                        var_name = suggested
+                    env_file = Path(".env")
+                    content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+                    lines = [l for l in content.splitlines() if l.strip() and not l.strip().startswith(var_name + "=")]
+                    lines.append(f'{var_name}="{key_val.strip()}"')
+                    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    os.environ[var_name] = key_val.strip()
+                    save_bark_config(
+                        pug_dir,
+                        base_url=config["base_url"],
+                        auth_type=config.get("auth_type") or "api_key_header",
+                        api_key_env=var_name,
+                        auth_header=config.get("auth_header"),
+                    )
+                    console.print(f"[dim]Saved to .env as [bold]{var_name}[/]. Retrying smell test.[/]")
+                    return {"retry": True}
+            elif choice == "2":
+                auth_type_choice = Prompt.ask(
+                    "[tan]Auth type: bearer or api_key_header[/]",
+                    default=config.get("auth_type") or "api_key_header",
+                ).strip().lower() or "api_key_header"
+                var_name = Prompt.ask(
+                    f"[tan]Env var **name** only (e.g. BRAVE_SEARCH_TOKEN). Not the key value.[/]",
+                    default=suggested,
+                ).strip() or suggested
+                if _looks_like_key(var_name):
+                    console.print("[dim]That looks like a key, not a var name. Use a name like BRAVE_SEARCH_TOKEN. Skipping.[/]")
+                else:
+                    save_bark_config(
+                        pug_dir,
+                        base_url=config["base_url"],
+                        auth_type=auth_type_choice if auth_type_choice in ("bearer", "api_key_header") else "api_key_header",
+                        api_key_env=var_name,
+                        auth_header=config.get("auth_header"),
+                    )
+                    console.print(f"[dim]Saved. In this shell run: [bold]export {var_name}=your_key[/] then run [bold]pug bark[/] again.[/]")
+                    return {"retry": True}
+            answer = Prompt.ask("[tan]Continue and generate anyway? (y/N)[/]", default="n")
+            return answer.strip().lower() in ("y", "yes")
         except (KeyboardInterrupt, EOFError):
             return False
 
