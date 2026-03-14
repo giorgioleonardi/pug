@@ -25,6 +25,7 @@ setup(
     name="pug",
     version="1.0",
     packages=find_packages(),
+    py_modules=["main"],
     install_requires=[
         "anthropic>=0.39.0",
         "playwright>=1.40.0",
