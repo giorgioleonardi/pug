@@ -1,13 +1,13 @@
 # 🐶 PUG — The Stubborn API Scraper
 
-PUG sniffs messy API docs, chews them into a structured “Bone Map” with an LLM, and barks out a **Go Cobra CLI** plus **CLAUDE.md**, **SKILL.md**, and **MCP** server config — one folder per API.
+PUG scrapes one API docs URL, uses an LLM to draft a command map, and emits a thin **Go Cobra CLI** wrapper plus **CLAUDE.md** and **SKILL.md** — one folder per API.
 
 ## Requirements
 
 - **Python 3.10+**
 - **Anthropic API key** (for `chew`; validated automatically when you run `pug init`)
 - **Playwright** (browser for scraping): installed automatically by `pip install -e .`; on headless systems run `playwright install` if needed
-- **Go** (for the generated CLI): when you run `pug bark`, Pug builds the CLI binary automatically **if Go is installed** ([install Go](https://go.dev/dl/)). Without Go, you still get the Go source, CLAUDE.md, SKILL.md, and MCP; install Go and run `go build -o bin/<name> .` in the generated folder to create the binary.
+- **Go** (for the generated CLI): when you run `pug bark`, Pug builds the CLI binary automatically **if Go is installed** ([install Go](https://go.dev/dl/)). Without Go, you still get the Go source, CLAUDE.md, and SKILL.md; install Go and run `go build -o bin/<name> .` in the generated folder to create the binary.
 
 ## Install
 
@@ -30,7 +30,7 @@ The install step automatically runs `playwright install` so browser binaries are
 3. **Sniff** — Point Pug at an API docs URL; he scrapes to Markdown (stored under `bones/<bone>/`).
 4. **Chew** — Turn the sniff into a CLI plan (the Bone Map). Pug infers auth and base URL from the docs.
 5. **Refine (optional)** — `pug refine` to chat and tweak the Bone Map; say **done** when ready.
-6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, SKILL.md, and MCP in `bones/<bone>/cli/`.
+6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, and SKILL.md in `bones/<bone>/cli/`.
 7. **Run** — `pug run` (or `pug run <project>`) runs the generated CLI with .env and config loaded.
 
 ## Quick start
@@ -60,7 +60,7 @@ The install step automatically runs `playwright install` so browser binaries are
    pug refine
    ```
 
-6. **Bark** — Smell test, then generate Go CLI + docs + MCP:
+6. **Bark** — Smell test, then generate Go CLI + docs:
    ```bash
    pug bark
    ```
@@ -105,11 +105,10 @@ The generated CLI lives in `bones/<bone>/cli/` (e.g. `bones/brave-search/cli/`) 
 | Output | Use in Claude | Use in ChatGPT / others |
 |--------|----------------|--------------------------|
 | **CLAUDE.md** | Paste or attach in a chat so Claude knows the API and commands. | Same: paste or attach when you want the AI to use the API. |
-| **MCP** (`mcp.json` + `mcp-server.cjs`) | In **Claude desktop** (or any app that supports MCP): add the server from `mcp.json` to your MCP config and set the required env vars (e.g. `BRAVE_API_KEY`). Then Claude can call the API as a tool. | ChatGPT doesn’t support MCP; use the CLI manually or paste CLAUDE.md. |
 | **SKILL.md** | For **Cursor**: add as an Agent Skill so the editor can use this API. | N/A (Cursor-specific). |
 | **CLI binary** | Run in terminal, paste results into the chat. | Same. |
 
-**Summary:** For **Claude** or **OpenClaw** (or any MCP client): merge the `mcpServers` from the project’s `mcp.json` into your app’s MCP config, fix the server path if you moved the folder, and set the API key in the server’s `env`. For **ChatGPT** or tools without MCP: use **CLAUDE.md** as context and run the CLI yourself when needed.
+**Summary:** Use **CLAUDE.md** as context with your assistant and run the generated CLI yourself when needed.
 
 ## Editing after bark
 
