@@ -1,30 +1,27 @@
-import subprocess
-import sys
+import re
+from pathlib import Path
 
-from setuptools import setup, find_packages
-from setuptools.command.install import install
+from setuptools import find_packages, setup
 
-
-class PostInstall(install):
-    """Run playwright install after pip install so browsers are available."""
-
-    def run(self):
-        install.run(self)
-        if not self.dry_run:
-            try:
-                subprocess.check_call(
-                    [sys.executable, "-m", "playwright", "install"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                pass  # leave it to the user to run "playwright install" if needed
-
+HERE = Path(__file__).parent
+VERSION = re.search(r'^__version__ = "([^"]+)"', (HERE / "core" / "version.py").read_text(encoding="utf-8"), re.M).group(1)
 
 setup(
-    name="pug",
-    version="1.0",
-    packages=find_packages(),
+    name="pug-cli",
+    version=VERSION,
+    description="Scrapes one docs URL, asks Claude for a command map, and generates a thin local Go Cobra CLI wrapper plus agent notes.",
+    long_description=(HERE / "README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
+    author="Giorgio Leonardi",
+    url="https://github.com/giorgioleonardi/pug",
+    project_urls={
+        "Source": "https://github.com/giorgioleonardi/pug",
+        "Issues": "https://github.com/giorgioleonardi/pug/issues",
+    },
+    license="MIT",
+    license_files=["LICENSE"],
+    python_requires=">=3.10",
+    packages=find_packages(exclude=["tests", "tests.*"]),
     py_modules=["main"],
     install_requires=[
         "anthropic>=0.39.0",
@@ -38,5 +35,17 @@ setup(
             "pug=main:main",
         ],
     },
-    cmdclass={"install": PostInstall},
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Environment :: Console",
+        "Intended Audience :: Developers",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Software Development :: Code Generators",
+    ],
 )

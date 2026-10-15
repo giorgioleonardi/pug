@@ -2,154 +2,186 @@
 
 [![CI](https://github.com/giorgioleonardi/pug/actions/workflows/ci.yml/badge.svg)](https://github.com/giorgioleonardi/pug/actions/workflows/ci.yml)
 
-PUG scrapes one API docs URL, uses an LLM to draft a command map, and emits a thin **Go Cobra CLI** wrapper plus **CLAUDE.md** and **SKILL.md** — one folder per API.
+Scrapes one docs URL, asks Claude for a command map, and generates a thin local Go Cobra CLI wrapper plus agent notes. Local only; not MCP.
 
 ## Requirements
 
 - **Python 3.10+**
-- **Anthropic API key** (for `chew`; validated automatically when you run `pug init`)
-- **Model** (optional): Pug uses `claude-sonnet-5-5` by default; set `PUG_MODEL` (env var or `.env`) to use a different Claude model id
-- **Playwright** (browser for scraping): installed automatically by `pip install -e .`; on headless systems run `playwright install` if needed
-- **Go** (for the generated CLI): when you run `pug bark`, Pug builds the CLI binary automatically **if Go is installed** ([install Go](https://go.dev/dl/)). Without Go, you still get the Go source, CLAUDE.md, and SKILL.md; install Go and run `go build -o bin/<name> .` in the generated folder to create the binary.
+- **Go** to build the generated CLI ([install Go](https://go.dev/dl/)). Without Go, `pug bark` still writes the Go source and docs but exits with an error because there's no binary.
+- **Chromium for Playwright** (used by `pug sniff`). This is a separate step; see Install.
+- **Anthropic API key** for `pug chew` and `pug refine`. Set `ANTHROPIC_API_KEY` in your environment, or save it with `pug init` (validated first, then written to `./.env`). The environment variable wins over `.env`.
+- **Model** (optional): Pug uses `claude-sonnet-5-5` by default. Set `PUG_MODEL` (env var or `.env`) to use a different Claude model id.
 
 ## Install
 
-Use a virtual environment so dependencies stay isolated (recommended):
+Pug is **not on PyPI yet**. Install it from GitHub:
 
 ```bash
-git clone git@github.com:giorgioleonardi/pug.git
-cd pug
-python3 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -e .
+pipx install git+https://github.com/giorgioleonardi/pug
+"$(pipx environment --value PIPX_LOCAL_VENVS)/pug-cli/bin/playwright" install chromium
 ```
 
-The install step automatically runs `playwright install` so browser binaries are ready. If you're in a headless environment or it fails, run `playwright install` yourself.
+Or with pip (in a virtual environment):
 
-## Full flow (what PUG covers)
+```bash
+pip install git+https://github.com/giorgioleonardi/pug
+playwright install chromium
+```
 
-1. **Init** — Add your LLM (Anthropic) API key. Pug may prompt for a **bone** (project) name so you have an active project.
-2. **Bone** — `pug bone <name>` creates or switches to a project. All sniff/chew/refine/bark use this **active bone**. Use `pug bone` to list; `pug bone --exit` to clear.
-3. **Sniff** — Point Pug at an API docs URL; he scrapes to Markdown (stored under `bones/<bone>/`).
-4. **Chew** — Turn the sniff into a CLI plan (the Bone Map). Pug infers auth and base URL from the docs.
-5. **Refine (optional)** — `pug refine` to chat and tweak the Bone Map; say **done** when ready.
-6. **Bark** — Smell test (real GET); if auth is needed, Pug prompts. Then he generates the Go CLI, CLAUDE.md, and SKILL.md in `bones/<bone>/cli/`.
-7. **Run** — `pug run` (or `pug run <project>`) runs the generated CLI with .env and config loaded.
+Only Chromium is needed; you don't need all of Playwright's browsers. The Python package is called `pug-cli`, and the command is `pug`.
 
-## Quick start
+For contributors:
 
-1. **Init** — Save your Anthropic API key; Pug may ask for a bone name (or create one later):
-   ```bash
-   pug init
-   ```
+```bash
+git clone https://github.com/giorgioleonardi/pug.git
+cd pug
+python3 -m venv venv && source venv/bin/activate
+pip install -e . -r requirements-dev.txt
+playwright install chromium
+```
 
-2. **Bone** — Create or switch to a project (everything else uses this active bone):
-   ```bash
-   pug bone api-search-brave-com-cli
-   ```
+## Quick start (JSONPlaceholder, no API key needed for the API itself)
 
-3. **Sniff** — Scrape a docs URL (saved under `bones/<bone>/`):
-   ```bash
-   pug sniff "https://api.search.brave.com/app/documentation/web-search-api"
-   ```
+Run these in an empty working directory. Pug keeps everything under `./bones/`.
 
-4. **Chew** — AI suggests CLI commands and flags from the sniff:
-   ```bash
-   pug chew
-   ```
+**1. Anthropic key.** `chew` needs one. Either export it:
 
-5. **Refine** (optional) — Chat to tweak the Bone Map; say `done` when ready:
-   ```bash
-   pug refine
-   ```
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 
-6. **Bark** — Smell test, then generate Go CLI + docs:
-   ```bash
-   pug bark
-   ```
+or let Pug validate and save it to `./.env`:
 
-7. **Run** — Use the CLI (active bone by default, or pass the project name):
-   ```bash
-   pug run web-search --q hello
-   pug run api-search-brave-com-cli --help
-   ```
+```bash
+pug init
+```
 
-Output: `bones/<bone>/cli/` with `bin/<name>`, `CLAUDE.md`, `SKILL.md`, `mcp.json`, `mcp-server.cjs`. To work on another API: `pug bone stripe-cli` (or any name), then sniff/chew/bark again.
+**2. Create a bone** (one per API):
+
+```console
+$ pug bone jp
+Active bone: jp. Sniff, chew, refine, bark now use this project. 🦴
+```
+
+**3. Sniff the docs:**
+
+```console
+$ pug sniff https://jsonplaceholder.typicode.com/guide/
+╭─  sniff 🐾  ─────────────────────────────────────────────────────────────────╮
+│ Saved to bones/jp/last_sniff.md (6,447 chars, 216 lines)                     │
+│ Title: Fake data you can rely on.                                            │
+│ ...                                                                          │
+│ … 139 more lines. Use pug sniff --verbose to print everything.               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Huff! I did it. Where's my treat?
+Next: pug chew then pug bark. 🦴
+```
+
+**4. Chew:** Claude reads `bones/jp/last_sniff.md` and writes the Bone Map:
+
+```bash
+pug chew
+```
+
+This writes `bones/jp/bone_map.json` (commands, methods, paths, flags, and the API's original parameter names) and `bones/jp/bark_config.json` (base URL and auth, when the docs state them), then prints the Bone Map as a table. The model's output varies; review the table, or run `pug refine` to change it. See [`tests/fixtures/jsonplaceholder_bone_map.json`](tests/fixtures/jsonplaceholder_bone_map.json) for what a Bone Map looks like.
+
+**5. Bark:** a smell test (one real GET), then generate and build the CLI:
+
+```console
+$ pug bark
+Smell test: GET https://jsonplaceholder.typicode.com/posts → OK 🦴
+Generated /tmp/pug-pr5-qs/bones/jp/cli/: Go source, CLAUDE.md, SKILL.md
+Huff! I did it. Where's my treat?
+Try it: pug run list-posts (loads .env + base URL + auth for you). All commands: pug run jp --help.
+To add or change commands later: pug refine then pug bark. 🦴
+$ ls bones/jp/cli
+CLAUDE.md  SKILL.md  bin  cmd  go.mod  go.sum  main.go
+```
+
+**6. Run it.** The response body goes to stdout and the status line to stderr:
+
+```console
+$ pug run list-posts --user-id 1 | jq length
+200 OK
+10
+$ pug run get-post --id 1
+200 OK
+{
+  "userId": 1,
+  "id": 1,
+  "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+  "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"
+}
+$ pug run get-post --id 99999; echo $?
+404 Not Found
+{}
+1
+```
+
+(Pug's banner, also on stderr, is trimmed from these examples.) The same flow works for APIs that need a key; `pug bark` asks for the auth env var if the smell test gets a 401/403.
+
+## The generated CLI
+
+The binary lives at `bones/<bone>/cli/bin/<bone>`. Run it through `pug run` (which loads `.env` and the bone's config), or call it directly.
+
+- **stdout** is only the response body, pretty-printed JSON, so `| jq` works. The **status line** (`200 OK`) and error bodies go to **stderr**.
+- **Exit codes:** `0` on success; `1` on HTTP 4xx/5xx, network errors, invalid `--data`, or a missing required flag.
+- **Flags:** path params are required flags (e.g. `--id`). Query and body flags map back to the API's original names (e.g. `--user-id` → `userId`, `--limit` → `_limit`).
+- **Bodies:** POST/PUT/PATCH send JSON. Use per-field flags, or `--data '{"title":"x"}'` (also `--data @file.json`, or `@-` for stdin); field flags override `--data`.
+- **Base URL:** built in from the Bone Map. Override it with `<BONE>_BASE_URL` (e.g. `JP_BASE_URL`) or `--base-url`.
+- **Auth:** one env var, the Bone Map's `api_key_env` (shown in `--help` and in `CLAUDE.md`), used for bearer, API-key header, or basic auth.
+
+`CLAUDE.md` and `SKILL.md` in the same folder describe every command and this contract, so you can give them to an agent.
 
 ## Commands
 
 | Command | Description |
 |--------|-------------|
-| `pug init` | Set Anthropic API key (stored in `.env`); may prompt for first bone name |
-| `pug bone [name] [--exit]` | Create or switch to a bone (project); omit name to list. Sniff/chew/refine/bark use the **active bone**. `--exit` clears it. |
-| `pug sniff [url] [--resniff] [--save-as name]` | Scrape URL → Markdown (uses active bone); `--resniff` re-fetches last URL |
-| `pug chew [file\|-] [--merge]` | LLM builds Bone Map (uses active bone) |
-| `pug refine` | Chat to edit Bone Map (uses active bone) |
-| `pug bark` | Smell test → generate CLI (uses active bone; folder = bone name) |
-| `pug run [project] [args...]` | Run a generated CLI; omit project to use active bone. Args passed to the CLI (e.g. `pug run web-search --q hello`) |
+| `pug init [--force]` | Validate your Anthropic key, then save it to `.env`. `--force` replaces a saved key; you can also pipe a key in (`echo $KEY \| pug init --force`). |
+| `pug bone [name] [--exit]` | Create or switch to a bone; omit the name to list bones. Names are lowercase letters, digits, `-` and `_`. |
+| `pug sniff <url> [--resniff] [--save-as name] [--verbose]` | Scrape a docs URL to Markdown under the active bone. |
+| `pug chew [file\|-] [--merge]` | Claude turns the Markdown into a Bone Map. |
+| `pug refine` | Chat with Claude to edit the Bone Map. |
+| `pug bark` | Smell test, then generate and build the CLI and agent docs. |
+| `pug run [project] [args...]` | Run a generated CLI (active bone by default); the args go to the CLI. |
 
-## Testing the generated CLI
-
-From the **pug repo root**, run the generated CLI with everything configured for you:
-
-```bash
-pug run web-search --q "hello"              # uses active bone; args go to the CLI
-pug run api-search-brave-com-cli --help    # or pass the project name explicitly
-```
-
-`pug run` loads your `.env` and the project's base URL and auth, so you don't set env vars by hand.
-
-**Multiple APIs:** Create another bone with `pug bone stripe-cli`, then sniff/chew/bark. Switch back with `pug bone api-search-brave-com-cli`. Each bone has its own `bones/<name>/` (bone_map, last_sniff, etc.) and `bones/<name>/cli/` (generated output).
-
-## Using the outputs in Claude, ChatGPT, or other AI tools
-
-The generated CLI lives in `bones/<bone>/cli/` (e.g. `bones/brave-search/cli/`) — no download unless you need it elsewhere.
-
-| Output | Use in Claude | Use in ChatGPT / others |
-|--------|----------------|--------------------------|
-| **CLAUDE.md** | Paste or attach in a chat so Claude knows the API and commands. | Same: paste or attach when you want the AI to use the API. |
-| **SKILL.md** | For **Cursor**: add as an Agent Skill so the editor can use this API. | N/A (Cursor-specific). |
-| **CLI binary** | Run in terminal, paste results into the chat. | Same. |
-
-**Summary:** Use **CLAUDE.md** as context with your assistant and run the generated CLI yourself when needed.
+`pug --version` prints the version. Add `--debug` (or set `PUG_DEBUG=1`) to see full tracebacks. Every failure exits non-zero.
 
 ## Editing after bark
 
-`pug refine` (say `done`) → `pug bark` to regenerate. To add from another doc: `pug sniff <url> --save-as image` → `pug chew bones/<bone>/sniff_image.md --merge` → `pug bark`.
+`pug refine` (say `done`) → `pug bark` to regenerate. To add commands from another doc page: `pug sniff <url> --save-as more` → `pug chew bones/<bone>/sniff_more.md --merge` → `pug bark`.
 
 ## Config
 
-- **API key:** `pug init` creates `.env` with `ANTHROPIC_API_KEY`. See `.env.example` for the template.
-- **Runtime:** The active bone is stored in `bones/current`. Each bone's data lives in `bones/<name>/` (bone_map.json, last_sniff.md, bark_config.json; gitignored). Generated output is in `bones/<name>/cli/`. For APIs that need auth, bark will prompt for auth type and env var name (e.g. `API_KEY`).
+- **API key:** `ANTHROPIC_API_KEY` in your environment, or in `./.env` (written by `pug init`; see `.env.example`).
+- **Model:** `PUG_MODEL` in your environment or `.env` (default `claude-sonnet-5-5`).
+- **Runtime:** the active bone is stored in `bones/current`. Each bone's data lives in `bones/<name>/` (bone_map.json, last_sniff.md, bark_config.json), and the generated output in `bones/<name>/cli/`. `bones/` is gitignored.
+
+MCP server output is not supported.
 
 ## Security
 
-Do not commit `.env`. Use `.env.example` as a template and keep keys local. On GitHub, enable [push protection for secrets](https://docs.github.com/en/code-security/secret-scanning/protecting-pushes-with-secret-scanning) and consider [Dependabot](https://docs.github.com/en/code-security/dependabot) for dependency updates.
+Do not commit `.env`. Use `.env.example` as a template and keep keys local.
 
 ## Project layout
 
 ```
 pug/
-├── main.py          # CLI entry (init, bone, sniff, chew, refine, bark, run)
+├── main.py              # CLI entry point (init, bone, sniff, chew, refine, bark, run)
 ├── core/
-│   ├── sniffer.py   # Playwright scrape → Markdown
-│   ├── architect.py # LLM “chew” → Bone Map JSON
-│   ├── barker.py    # Smell test + Go/Cobra + CLAUDE/SKILL/MCP
-│   └── (API key validated in init via architect)
-├── templates/       # Go and doc templates
-├── bones/           # Runtime (gitignored): one dir per bone
-│   ├── current      # Active bone name
-│   ├── brave-search/
-│   │   ├── bone_map.json
-│   │   ├── bark_config.json
-│   │   ├── last_sniff.md
-│   │   ├── last_sniff_full_url
-│   │   └── cli/     # Generated: bin/, CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs
-│   └── stripe/
-│       └── ...
+│   ├── sniffer.py       # Playwright scrape → Markdown
+│   ├── architect.py     # Claude "chew"/"refine" → Bone Map JSON; key validation
+│   ├── barker.py        # Smell test, Go/Cobra generation, CLAUDE.md/SKILL.md
+│   ├── errors.py        # One-line error messages
+│   └── version.py       # Version (used by setup.py and pug --version)
+├── tests/               # pytest (offline by default; see CONTRIBUTING.md)
+├── .github/workflows/   # CI
 ├── requirements.txt
-└── setup.py
+├── requirements-dev.txt
+└── setup.py             # Package "pug-cli", command "pug"
 ```
+
+Runtime output (gitignored), per bone: `bones/<name>/{bone_map.json, bark_config.json, last_sniff.md, cli/}`.
 
 ## License
 

@@ -31,8 +31,9 @@ from core.architect import (
 from core.barker import bark as run_bark, example_command, save_bark_config
 from core.errors import PugError, friendly_error
 from core.sniffer import sniff
+from core.version import __version__
 
-VERSION = "1.0"
+VERSION = __version__
 
 console = Console()
 err_console = Console(stderr=True)
@@ -493,13 +494,13 @@ def cmd_chew(markdown_source: str = "-", merge: bool = False):
                 console.print(f"[dim]Auth from docs: [bold]{config['auth_type']}[/] (header: {config.get('auth_header', '')}, env: {config.get('api_key_env', '')})[/]")
         else:
             console.print(f"[dim]Insights: [bold]{len(rows)}[/] commands · base URL: [bold]{base_hint or '(set in bark)'}[/][/]")
-        console.print(f"[dim]Run [bold]pug bark[/] to verify (smell test) and generate CLI + docs + MCP. 🦴[/]")
+        console.print(f"[dim]Run [bold]pug bark[/] to verify (smell test) and generate the CLI + agent docs. 🦴[/]")
     console.print(f"[dim]Bone map: [bold]{_pug_project_dir(project)}/[/].[/]")
     console.print(f"[{SUCCESS}]Huff! I did it. Where's my treat?[/]")
 
 
 def cmd_bark():
-    """BARK: System compiler — smell test, then generate Go CLI + CLAUDE.md, SKILL.md, MCP. Uses the active bone."""
+    """BARK: System compiler — smell test, then generate Go CLI + CLAUDE.md, SKILL.md. Uses the active bone."""
     _load_dotenv_into_env()
     project_name = _require_bone()
     pug_dir = _pug_project_dir(project_name)
@@ -511,7 +512,7 @@ def cmd_bark():
     console.print(
         Panel.fit(
             f"[bold {GOLD}]🐶 Barking at the Bone Map...[/]\n\n"
-            "[dim]Smell test → Go/Cobra, CLAUDE.md, SKILL.md, mcp.json (one folder per API). 🦴[/]",
+            "[dim]Smell test → Go/Cobra, CLAUDE.md, SKILL.md (one folder per API). 🦴[/]",
             border_style=BORDER,
             title=f"[{GOLD}] bark 🐾 [/]",
             title_align="left",
@@ -633,7 +634,7 @@ def cmd_bark():
     )
     cli_name = project_name
     bin_path = out_dir / "bin" / cli_name
-    console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: Go source, CLAUDE.md, SKILL.md, mcp.json, mcp-server.cjs[/]")
+    console.print(f"[dim]Generated [bold]{out_dir.resolve()}/[/]: Go source, CLAUDE.md, SKILL.md[/]")
     if not bin_path.exists():
         build_log = out_dir / "build.log"
         if shutil.which("go") is None:
@@ -830,8 +831,8 @@ def main():
     # bark: uses active bone
     subparsers.add_parser(
         "bark",
-        help="🐾 BARK: generate Go CLI + docs + MCP (uses active bone)",
-        description="Smell-test the API (one real GET), then generate the Go CLI, CLAUDE.md, SKILL.md and mcp.json in bones/<bone>/cli/ and build the binary.",
+        help="🐾 BARK: generate Go CLI + agent docs (uses active bone)",
+        description="Smell-test the API (one real GET), then generate the Go CLI, CLAUDE.md and SKILL.md in bones/<bone>/cli/ and build the binary.",
     )
 
     # refine: uses active bone
