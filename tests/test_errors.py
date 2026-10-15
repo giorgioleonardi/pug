@@ -338,6 +338,7 @@ def test_unexpected_error_and_debug(inproc, monkeypatch, capsys):
 
 
 @pytest.mark.network
+@pytest.mark.anthropic
 def test_init_fake_key_against_real_anthropic(tmp_path):
     """Real request with a fake key: expect a clean 401 line, exit 1, and no .env."""
     r = pug(tmp_path, "init", stdin_text="sk-ant-not-a-real-key\n")
