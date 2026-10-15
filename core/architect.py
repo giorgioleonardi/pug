@@ -6,11 +6,34 @@ Output is a JSON Bone Map, persisted and displayed in a Rich Table.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
 
 import anthropic
+
+# Model used for chew, merge, refine and key validation. Override with PUG_MODEL
+# (environment variable or a PUG_MODEL= line in ./.env).
+# Source: https://docs.claude.com/en/docs/about-claude/models/overview
+DEFAULT_MODEL = "claude-sonnet-5-5"
+
+
+def get_model(env_path: Optional[Path] = None) -> str:
+    """Return the Claude model id: PUG_MODEL from the environment, then from .env, else DEFAULT_MODEL."""
+    value = os.environ.get("PUG_MODEL", "").strip()
+    if value:
+        return value
+    path = (env_path or Path.cwd()) / ".env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("PUG_MODEL="):
+                value = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    return value
+    return DEFAULT_MODEL
+
 
 # Default .env location (caller's cwd)
 def _load_api_key(env_path: Optional[Path] = None) -> str:
@@ -102,7 +125,7 @@ def chew(markdown: str, api_key: Optional[str] = None, env_path: Optional[Path] 
         "---\n" + markdown
     )
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=get_model(env_path),
         max_tokens=2048,
         system=CHEW_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
@@ -183,7 +206,7 @@ def chew_merge(
         + markdown
     )
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=get_model(env_path),
         max_tokens=2048,
         system=CHEW_MERGE_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
@@ -274,7 +297,7 @@ def refine_turn(
     system = REFINE_SYSTEM.replace("{bone_map_json}", json.dumps(bone_map, indent=2))
     messages = conversation_history + [{"role": "user", "content": user_message}]
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=get_model(env_path),
         max_tokens=2048,
         system=system,
         messages=messages,
@@ -311,7 +334,7 @@ def validate_anthropic_key(env_path: Optional[Path] = None) -> bool:
     key = _load_api_key(env_path)
     client = anthropic.Anthropic(api_key=key)
     client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=get_model(env_path),
         max_tokens=10,
         messages=[{"role": "user", "content": "Say OK"}],
     )

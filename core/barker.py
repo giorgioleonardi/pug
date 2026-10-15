@@ -362,28 +362,31 @@ def _gen_one_go_cmd(entry: dict[str, Any], out_dir: Path) -> None:
     go_path_expr = path_tpl
     for p in path_params:
         go_path_expr = go_path_expr.replace("{" + p + "}", "%s", 1)
-    fmt_args = ", ".join(param_names) if param_names else ""
+    # Go variables are package-level, so scope them per command to avoid
+    # "redeclared in this block" when two commands share a flag name (e.g. --id).
+    var_prefix = info["method_name"] + "_"
+    fmt_args = ", ".join(var_prefix + p for p in param_names) if param_names else ""
     if fmt_args:
         path_sprintf = f'fmt.Sprintf("{_go_escape(go_path_expr)}", {fmt_args})'
     else:
         path_sprintf = f'"{_go_escape(path_tpl)}"'
 
     all_flag_vars = param_names + query_params
-    var_decls = "\n".join(f'\t{p} string' for p in all_flag_vars) if all_flag_vars else "\t_ string"
+    var_decls = "\n".join(f'\t{var_prefix}{p} string' for p in all_flag_vars) if all_flag_vars else "\t_ string"
     flags_code = []
     for p in param_names:
         flag_name = p.replace("_", "-")
-        flags_code.append(f'\t{info["method_name"]}Cmd.Flags().StringVar(&{p}, "{flag_name}", "", "path param")')
+        flags_code.append(f'\t{info["method_name"]}Cmd.Flags().StringVar(&{var_prefix}{p}, "{flag_name}", "", "path param")')
     for q in query_params:
         flag_name = q.replace("_", "-")
-        flags_code.append(f'\t{info["method_name"]}Cmd.Flags().StringVar(&{q}, "{flag_name}", "", "query param")')
+        flags_code.append(f'\t{info["method_name"]}Cmd.Flags().StringVar(&{var_prefix}{q}, "{flag_name}", "", "query param")')
 
     run_lines = [
         "\t\tpath := " + path_sprintf,
         "\t\tquery := map[string]string{}",
     ]
     for q in query_params:
-        run_lines.append(f'\t\tquery["{q}"] = {q}')
+        run_lines.append(f'\t\tquery["{q}"] = {var_prefix}{q}')
     run_lines.append('\t\tresp, err := doRequest("' + http_m + '", path, query, nil)')
     run_lines.append("\t\tif err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }")
     run_lines.append("\t\tdefer resp.Body.Close()")
