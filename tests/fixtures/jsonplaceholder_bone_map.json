@@ -4,6 +4,7 @@
     "method": "GET",
     "path": "/posts",
     "flags": ["--user-id", "--limit"],
+    "api_names": {"--user-id": "userId", "--limit": "_limit"},
     "notes": "List posts; filter by user and limit results"
   },
   {
@@ -25,6 +26,8 @@
     "method": "POST",
     "path": "/posts",
     "flags": ["--title", "--body", "--user-id"],
+    "api_names": {"--user-id": "userId"},
+    "body": ["--title", "--body", "--user-id"],
     "notes": "Create a post"
   },
   {
