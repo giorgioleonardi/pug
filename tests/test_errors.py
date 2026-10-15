@@ -60,9 +60,11 @@ def bone(tmp_path):
 # --- help / version ---------------------------------------------------------------
 
 def test_version():
+    from core.version import __version__
+
     r = pug(ROOT, "--version")
     assert r.returncode == 0
-    assert r.stdout.strip() == "pug 1.0"
+    assert r.stdout.strip() == f"pug {__version__}" == "pug 1.0"
 
 
 @pytest.mark.parametrize(

@@ -89,6 +89,9 @@ def test_core_flow_offline(tmp_path, local_api):
     assert "Huff! I did it" in r.out
     binary = bone_dir / "cli" / "bin" / "jp"
     assert binary.is_file()
+    cli_files = {p.name for p in (bone_dir / "cli").iterdir()}
+    assert {"CLAUDE.md", "SKILL.md"} <= cli_files
+    assert not cli_files & {"mcp.json", "mcp-server.cjs"}
 
     # 4. pug run against the local server: JSON on stdout, exit 0
     r = _pug(tmp_path, "run", "get-post", "--id", "1")
