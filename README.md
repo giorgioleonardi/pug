@@ -1,5 +1,7 @@
 # 🐶 PUG — The Stubborn API Scraper
 
+[![CI](https://github.com/giorgioleonardi/pug/actions/workflows/ci.yml/badge.svg)](https://github.com/giorgioleonardi/pug/actions/workflows/ci.yml)
+
 PUG scrapes one API docs URL, uses an LLM to draft a command map, and emits a thin **Go Cobra CLI** wrapper plus **CLAUDE.md** and **SKILL.md** — one folder per API.
 
 ## Requirements
