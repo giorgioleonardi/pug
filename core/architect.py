@@ -56,8 +56,8 @@ Rules:
 1. One row per endpoint or logical action. Include every distinct route from the docs.
 2. Prefer read-only (GET) operations for the initial CLI. Include POST/PUT/PATCH/DELETE only when clearly documented; the tool will verify with read-only calls first.
 3. Nested routes: list each as its own command. For paths with path params (e.g. /posts/1/comments, /users/1/posts), use a command name that describes the resource and add a flag for the parent ID (e.g. --post-id, --user-id). Example: GET /posts/1/comments -> command "list-post-comments", path "/posts/{id}/comments", flags ["--post-id"] (or "--id" for the post).
-4. Filtering and query params: for any query parameter or filter (userId, limit, search, page, _limit, etc.), add a matching flag in kebab-case: userId -> --user-id, _limit -> --limit, postId -> --post-id. Include them in "flags" for that row. If the docs mention rate limits or pagination, add a note in "notes" (e.g. "Supports --limit; API may rate-limit").
-5. Each item must have: "command" (lowercase-hyphen name), "method", "path" (use {id} or {userId} etc. for path params), "flags" (array of flag names like "--user-id", "--limit", "--post-id"), and optionally "notes" (one line).
+4. Filtering and query params: for any query parameter or filter (userId, limit, search, page, _limit, etc.), add a matching flag in kebab-case: userId -> --user-id, _limit -> --limit, postId -> --post-id. Include them in "flags" for that row, and record the exact parameter name from the docs in "api_names" (e.g. {"--user-id": "userId", "--limit": "_limit"}). If the docs mention rate limits or pagination, add a note in "notes" (e.g. "Supports --limit; API may rate-limit").
+5. Each item must have: "command" (lowercase-hyphen name), "method", "path" (use {id} or {userId} etc. for path params), "flags" (array of flag names like "--user-id", "--limit", "--post-id"; list path-param flags first, in path order), and optionally "notes" (one line). Optional fields: "api_names" (object mapping a flag to the exact query/body parameter name in the docs, whenever it differs from the flag) and, for POST/PUT/PATCH, "body" (array of the flags whose values go in the JSON request body; any other non-path flags are query params).
 6. API server and auth — read the docs carefully to determine the exact requirement:
    - If the docs specify the API base URL (e.g. "Server: https://...", "Base URL", or cURL host), output: BASE_URL: <url> (no trailing slash).
    - If the docs specify authentication, identify the scheme and output the matching lines:
@@ -81,12 +81,12 @@ AUTH_ENV: API_TOKEN
 [{"command": "list-items", "method": "GET", "path": "/items", "flags": [], "notes": "List items"}]
 
 Example (no auth):
-[{"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--limit"], "notes": "List posts"}]"""
+[{"command": "list-posts", "method": "GET", "path": "/posts", "flags": ["--user-id", "--limit"], "api_names": {"--user-id": "userId", "--limit": "_limit"}, "notes": "List posts"}, {"command": "create-post", "method": "POST", "path": "/posts", "flags": ["--title", "--user-id"], "api_names": {"--user-id": "userId"}, "body": ["--title", "--user-id"], "notes": "Create a post"}]"""
 
 
 CHEW_MERGE_SYSTEM = """You are a CLI architect. You have an EXISTING Bone Map (JSON array of CLI commands) and NEW API documentation.
 
-Your task: output a single JSON array that is the EXISTING commands plus any NEW commands from the new doc. Keep every existing command exactly as-is. Add only new commands that come from the new documentation (use the same format: command, method, path, flags, notes). Do not remove or change existing commands. If the new doc describes no new endpoints, output the existing array unchanged.
+Your task: output a single JSON array that is the EXISTING commands plus any NEW commands from the new doc. Keep every existing command exactly as-is. Add only new commands that come from the new documentation (use the same format: command, method, path, flags, notes, and optional api_names / body). Do not remove or change existing commands. If the new doc describes no new endpoints, output the existing array unchanged.
 
 Output ONLY the combined JSON array. No BASE_URL or AUTH lines, no markdown fences, no explanation."""
 
@@ -201,7 +201,7 @@ def chew_merge(
         "EXISTING Bone Map (keep all of these unchanged):\n\n"
         f"{existing_json}\n\n"
         "---\n\n"
-        "NEW API documentation (add any new commands from this; same JSON shape: command, method, path, flags, notes):\n\n"
+        "NEW API documentation (add any new commands from this; same JSON shape: command, method, path, flags, notes, optional api_names / body):\n\n"
         "---\n"
         + markdown
     )
@@ -278,7 +278,7 @@ When the user asks for changes (add/remove/rename commands, change flags, fix pa
 [ ... ]
 ```
 
-If the user is just asking a question or saying they're done, reply without outputting JSON. Only output a ```json block when the Bone Map should be updated. Keep the same structure: each object has "command", "method", "path", "flags" (array), "notes" (optional)."""
+If the user is just asking a question or saying they're done, reply without outputting JSON. Only output a ```json block when the Bone Map should be updated. Keep the same structure: each object has "command", "method", "path", "flags" (array), "notes" (optional), and keep any "api_names" (flag -> exact API parameter name) and "body" (flags sent in the JSON body) fields, updating them when flags change."""
 
 
 def refine_turn(

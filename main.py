@@ -708,8 +708,9 @@ def cmd_refine():
         history.append({"role": "assistant", "content": reply})
 
 
-def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
-    """Run a generated CLI. If project is omitted, use active bone. Pass-through args go to the CLI."""
+def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> Optional[int]:
+    """Run a generated CLI. If project is omitted, use active bone. Pass-through args go to the CLI.
+    Returns the generated CLI's exit code (None if it was not started)."""
     pug_root = Path.cwd()
     # If first token is a bone name (bones/<name>/cli exists), use it; else use current bone and treat token as first CLI arg
     project_name = None
@@ -750,9 +751,9 @@ def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
     env = _env_for_run(pug_root, config)
     cmd = [str(bin_path)] + args
     try:
-        subprocess.run(cmd, env=env, cwd=str(project_dir))
+        return subprocess.run(cmd, env=env, cwd=str(project_dir)).returncode
     except KeyboardInterrupt:
-        pass
+        return 130
 
 
 def main():
@@ -807,6 +808,12 @@ def main():
 
     args, unknown = parser.parse_known_args()
 
+    if args.command == "run":
+        # Keep stdout for the generated CLI's response body (so `pug run ... | jq` works):
+        # Pug's banner and status lines go to stderr.
+        global console
+        console = Console(stderr=True)
+
     welcome(show_ascii_art=(args.command == "init"))
     if args.command in ("sniff", "chew", "refine", "bark", "run"):
         _print_bone_status()
@@ -832,9 +839,11 @@ def main():
         # `pug run <command> --help` is forwarded to the generated CLI.
         project_arg = getattr(args, "project", None)
         if (project_arg in ("--help", "-h") and not unknown) or (project_arg is None and unknown in (["--help"], ["-h"])):
-            console.print(escape(run_parser.format_help()))
+            Console().print(escape(run_parser.format_help()))
             return
-        cmd_run(getattr(args, "project", None), unknown or [])
+        code = cmd_run(getattr(args, "project", None), unknown or [])
+        if code:
+            sys.exit(code)
     elif args.command is None:
         console.print(f"[dim]Use [bold {GOLD}]pug init[/] to set your API key, then [bold]pug bone <name>[/] to create a project. 🐶[/]")
         console.print("[dim]Commands: bone, sniff, chew, refine, bark, run.[/]")
