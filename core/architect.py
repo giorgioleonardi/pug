@@ -13,6 +13,10 @@ from typing import Any, Optional
 
 import anthropic
 
+from core.errors import PugError
+
+NO_KEY_MESSAGE = "No Anthropic API key found. Set ANTHROPIC_API_KEY in your environment, or run pug init to save one to .env."
+
 # Model used for chew, merge, refine and key validation. Override with PUG_MODEL
 # (environment variable or a PUG_MODEL= line in ./.env).
 # Source: https://docs.claude.com/en/docs/about-claude/models/overview
@@ -35,19 +39,28 @@ def get_model(env_path: Optional[Path] = None) -> str:
     return DEFAULT_MODEL
 
 
+def find_api_key(env_path: Optional[Path] = None) -> tuple[Optional[str], Optional[str]]:
+    """Return (key, source): ANTHROPIC_API_KEY from the environment wins, then ./.env. (None, None) if unset."""
+    value = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if value:
+        return value, "environment"
+    path = (env_path or Path.cwd()) / ".env"
+    if path.exists():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("ANTHROPIC_API_KEY="):
+                value = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    return value, ".env"
+    return None, None
+
+
 # Default .env location (caller's cwd)
 def _load_api_key(env_path: Optional[Path] = None) -> str:
-    path = (env_path or Path.cwd()) / ".env"
-    if not path.exists():
-        raise FileNotFoundError("No .env found. Run [bold tan]pug init[/] first. 🐶")
-    text = path.read_text()
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("ANTHROPIC_API_KEY="):
-            value = line.split("=", 1)[1].strip().strip('"').strip("'")
-            if value:
-                return value
-    raise ValueError("ANTHROPIC_API_KEY not set in .env. Run [bold tan]pug init[/]. 🐶")
+    key, _ = find_api_key(env_path)
+    if not key:
+        raise PugError(NO_KEY_MESSAGE)
+    return key
 
 
 CHEW_SYSTEM = """You are a CLI architect. Given API documentation in Markdown, you produce a "Bone Map": a JSON array of CLI commands that map to the API.
@@ -329,9 +342,9 @@ def refine_turn(
     return text, updated
 
 
-def validate_anthropic_key(env_path: Optional[Path] = None) -> bool:
-    """PANT: Test if the Anthropic API key is valid (a treat or a trick?)."""
-    key = _load_api_key(env_path)
+def validate_anthropic_key(env_path: Optional[Path] = None, api_key: Optional[str] = None) -> bool:
+    """PANT: Test if the Anthropic API key is valid (a treat or a trick?). Raises anthropic errors on failure."""
+    key = api_key or _load_api_key(env_path)
     client = anthropic.Anthropic(api_key=key)
     client.messages.create(
         model=get_model(env_path),
