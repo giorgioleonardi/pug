@@ -98,7 +98,7 @@ def _build_method_info(entry: dict[str, Any]) -> dict[str, Any]:
 def load_bone_map(path: Path) -> list[dict[str, Any]]:
     """Load and parse .pug/bone_map.json."""
     if not path.exists():
-        raise FileNotFoundError(f"Bone Map not found: {path}. Run [bold tan]pug chew[/] first. 🐶")
+        raise FileNotFoundError(f"Bone Map not found: {path}. Run pug chew first.")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("bone_map.json must be a JSON array")
@@ -167,7 +167,7 @@ def smell_test(
     Returns (success, error_message, url_tested).
     """
     if not requests:
-        return True, "", ""
+        raise RuntimeError("The smell test needs the requests package. Run: pip install requests")
     base_url = base_url.rstrip("/")
     # Prefer a simple GET without path params
     get_entries = [e for e in bone_map if (e.get("method") or "GET").upper() == "GET"]
@@ -213,10 +213,17 @@ def smell_test(
     try:
         r = requests.get(url, headers=headers or None, timeout=15)
         if r.status_code >= 400:
-            return False, f"Smell test failed: {url} returned {r.status_code} {r.reason}", url
+            return False, f"{url} returned {r.status_code} {r.reason}", url
         return True, "", url
+    except requests.Timeout:
+        return False, f"{url} timed out", url
+    except requests.ConnectionError as e:
+        text = str(e)
+        if "NameResolution" in text or "Name or service not known" in text or "nodename nor servname" in text:
+            return False, f"DNS lookup failed for {urlparse(url).netloc} ({url})", url
+        return False, f"couldn't connect to {url}", url
     except requests.RequestException as e:
-        return False, f"Smell test failed: {url} — {e}", url
+        return False, f"{url}: {e}", url
 
 
 # --- Project name from API base URL ---
@@ -275,6 +282,10 @@ func main() {{
 \tcmd.Execute()
 }}
 """, encoding="utf-8")
+
+    # Drop command files from a previous bark so removed or renamed commands don't linger (or break the build)
+    for old in (out_dir / "cmd").glob("*.go"):
+        old.unlink()
 
     # cmd/root.go: root command with --base-url, --bearer, --api-key
     root_go = f'''package cmd
@@ -448,6 +459,11 @@ func handleResponse(resp *http.Response) int {{
     for entry in bone_map:
         _gen_one_go_cmd(entry, out_dir)
 
+    # Remove the previous binary and build log first, so a failed build can't leave a stale binary
+    # that looks like success.
+    for stale in (out_dir / "bin" / cli_name, out_dir / "build.log"):
+        if stale.exists():
+            stale.unlink()
     try:
         subprocess.run(["go", "mod", "tidy"], cwd=out_dir, capture_output=True, timeout=30)
         r = subprocess.run(
@@ -458,8 +474,10 @@ func handleResponse(resp *http.Response) int {{
         )
         if r.returncode != 0 and r.stderr:
             (out_dir / "build.log").write_bytes(r.stderr)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    except FileNotFoundError:
+        pass  # go not installed; caller reports it
+    except subprocess.TimeoutExpired as e:
+        (out_dir / "build.log").write_text(f"go timed out: {e}\n", encoding="utf-8")
 
 
 def _gen_one_go_cmd(entry: dict[str, Any], out_dir: Path) -> None:
@@ -550,6 +568,17 @@ func init() {{
 }}
 '''
     (out_dir / "cmd" / f"{info['method_name']}.go").write_text(cmd_go, encoding="utf-8")
+
+
+def example_command(bone_map: list[dict[str, Any]]) -> Optional[str]:
+    """First command in the Bone Map with its required (path) flags, e.g. 'get-post --id <id>'."""
+    for entry in bone_map:
+        if not isinstance(entry, dict) or not entry.get("command"):
+            continue
+        info = _build_method_info(entry)
+        flags = " ".join(f"--{p.replace('_', '-')} <{p.replace('_', '-')}>" for p in info["param_names"])
+        return f"{info['command']} {flags}".strip()
+    return None
 
 
 # --- CLAUDE.md and SKILL.md ---
@@ -801,12 +830,12 @@ def bark(
     if not skip_smell_test:
         while True:
             ok, err, url = smell_test(bone_map, base_url, auth_type, api_key_env, auth_header=auth_header)
-            if on_smell_test and url:
-                on_smell_test(url, ok, err)
+            if on_smell_test:
+                on_smell_test(url, ok, err)  # url == "" means skipped (no GET endpoint)
             if ok:
                 break
             if not refine_chat_on_fail:
-                raise RuntimeError(err)
+                raise RuntimeError(f"Smell test failed: {err}")
             result = refine_chat_on_fail(err, pug_dir, config)
             if result is True:
                 break
