@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -611,11 +612,17 @@ def cmd_bark():
             console.print(f"[dim]To add or change commands later: [bold]pug refine[/] then [bold]pug bark[/]. Run it: [bold]pug run[/] or [bold]pug run {cli_name} ...[/]. 🦴[/]")
         else:
             build_log = out_dir / "build.log"
-            hint = f" See [bold]{build_log}[/] for errors." if build_log.exists() else ""
-            console.print(
-                f"[dim][yellow]Binary not built[/] (Pug builds it automatically when [bold]Go[/] is installed).{hint} "
-                f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
-            )
+            if shutil.which("go") is None:
+                console.print(
+                    f"[dim][yellow]Binary not built[/]: [bold]go[/] is not on your PATH. "
+                    f"Install Go from [bold]https://go.dev/dl/[/] then run [bold]pug bark[/] again, or build now: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
+                )
+            else:
+                hint = f"See [bold]{build_log}[/] for the compiler errors." if build_log.exists() else "No build.log was written."
+                console.print(
+                    f"[{ERROR}]Bark! The Go build failed.[/] {hint} "
+                    f"[dim]Retry by hand: [bold]cd {out_dir} && go build -o bin/{cli_name} .[/][/]"
+                )
     except SystemExit:
         raise
     except FileNotFoundError as e:
@@ -736,7 +743,7 @@ def cmd_run(project_or_first_arg: Optional[str], run_args: list[str]) -> None:
         else:
             console.print(f"[{ERROR}]Bark! [bold]{project_name}[/] has no .pug-config.json. Re-run [bold]pug bark[/]. 🐶[/]")
             return
-    bin_path = project_dir / "bin" / project_name
+    bin_path = (project_dir / "bin" / project_name).resolve()
     if not bin_path.exists():
         console.print(f"[{ERROR}]Bark! No binary at [bold]{bin_path}[/]. Install Go and run [bold]go build -o bin/{project_name} .[/] in [bold]{project_dir}[/]. 🐶[/]")
         return
@@ -821,8 +828,11 @@ def main():
     elif args.command == "refine":
         cmd_refine()
     elif args.command == "run":
-        if getattr(args, "project", None) in ("--help", "-h") and not unknown:
-            console.print(run_parser.format_help())
+        # `pug run --help` / `-h` with nothing else shows Pug's own run usage;
+        # `pug run <command> --help` is forwarded to the generated CLI.
+        project_arg = getattr(args, "project", None)
+        if (project_arg in ("--help", "-h") and not unknown) or (project_arg is None and unknown in (["--help"], ["-h"])):
+            console.print(escape(run_parser.format_help()))
             return
         cmd_run(getattr(args, "project", None), unknown or [])
     elif args.command is None:

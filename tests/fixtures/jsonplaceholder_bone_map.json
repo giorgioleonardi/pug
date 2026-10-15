@@ -1,0 +1,37 @@
+[
+  {
+    "command": "list-posts",
+    "method": "GET",
+    "path": "/posts",
+    "flags": ["--user-id", "--limit"],
+    "notes": "List posts; filter by user and limit results"
+  },
+  {
+    "command": "get-post",
+    "method": "GET",
+    "path": "/posts/{id}",
+    "flags": ["--id"],
+    "notes": "Get a single post by id"
+  },
+  {
+    "command": "list-post-comments",
+    "method": "GET",
+    "path": "/posts/{id}/comments",
+    "flags": ["--id"],
+    "notes": "List comments for a post"
+  },
+  {
+    "command": "create-post",
+    "method": "POST",
+    "path": "/posts",
+    "flags": ["--title", "--body", "--user-id"],
+    "notes": "Create a post"
+  },
+  {
+    "command": "delete-post",
+    "method": "DELETE",
+    "path": "/posts/{id}",
+    "flags": ["--id"],
+    "notes": "Delete a post by id"
+  }
+]
